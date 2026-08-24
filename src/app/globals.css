@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+:root {
+  /* Base: black / paper white */
+  --color-ink: #141311;
+  --color-paper: #faf6ee;
+
+  /* Tasteful accents, used sparingly */
+  --color-rust: #bd5330;
+  --color-jade: #2f8f7e;
+
+  /* Headline font: the real, licensed "Newcastle" font */
+  --font-headline: var(--font-headline-local), sans-serif;
+  --font-body-serif: "Lora", serif;
+}
+
+@theme inline {
+  --color-ink: var(--color-ink);
+  --color-paper: var(--color-paper);
+  --color-rust: var(--color-rust);
+  --color-jade: var(--color-jade);
+  --font-display: var(--font-headline);
+  --font-serif: var(--font-body-serif);
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
