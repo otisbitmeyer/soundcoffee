@@ -41,7 +41,7 @@ export default function ListeningLair() {
       <Header />
 
       <main className="flex-1 bg-ink text-paper">
-        <div className="border-b-4 border-paper/20 px-6 py-16 text-center sm:py-20">
+        <div className="border-b-4 border-paper/20 px-6 py-12 text-center sm:py-14">
           <h1 className="font-display text-5xl tracking-wide sm:text-6xl">
             THE LISTENING LAIR
           </h1>
@@ -50,7 +50,7 @@ export default function ListeningLair() {
             alt="Conversations in the coffee shop."
             width={1536}
             height={1024}
-            className="mx-auto mt-6 h-40 w-auto sm:h-48"
+            className="mx-auto mt-2 h-48 w-auto sm:h-56"
           />
         </div>
 

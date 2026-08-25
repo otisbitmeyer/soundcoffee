@@ -3,6 +3,8 @@
 import { useState } from "react";
 import CheckoutModal from "./CheckoutModal";
 
+const SUMMARY_LIMIT = 90;
+
 function formatPrice(price) {
   if (!price) return null;
   const { amount, currency, frequency } = price;
@@ -15,10 +17,20 @@ function formatPrice(price) {
 
 export default function ProductCard({ listing, sellerPubkey }) {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const priceLabel = formatPrice(listing.price);
 
+  // Prefer the longer markdown content for the expanded view, falling
+  // back to the summary if that's all there is.
+  const fullText = listing.content?.trim() || listing.summary || "";
+  const shortText = listing.summary || listing.content?.trim() || "";
+  const needsTruncation = shortText.length > SUMMARY_LIMIT;
+  const truncated = needsTruncation
+    ? `${shortText.slice(0, SUMMARY_LIMIT).trim()}…`
+    : shortText;
+
   return (
-    <div className="flex flex-col border-2 border-ink">
+    <div className="flex flex-col border-2 border-ink text-center">
       <div className="flex aspect-square items-center justify-center overflow-hidden border-b-2 border-ink bg-ink/5">
         {listing.images[0] ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -35,11 +47,21 @@ export default function ProductCard({ listing, sellerPubkey }) {
       </div>
       <div className="flex flex-1 flex-col p-5">
         <h3 className="font-display text-lg text-ink">{listing.title}</h3>
-        {listing.summary && (
-          <p className="mt-1 font-serif text-sm text-ink/60">
-            {listing.summary}
-          </p>
+
+        {shortText && (
+          <div className="mt-1 font-serif text-sm text-ink/60">
+            <p>{expanded ? fullText : truncated}</p>
+            {(needsTruncation || (expanded && fullText !== shortText)) && (
+              <button
+                onClick={() => setExpanded((e) => !e)}
+                className="mt-1 font-display text-xs tracking-widest text-rust hover:text-ink"
+              >
+                {expanded ? "SHOW LESS" : "READ MORE"}
+              </button>
+            )}
+          </div>
         )}
+
         {priceLabel && (
           <span className="mt-3 block font-display text-rust">
             {priceLabel}

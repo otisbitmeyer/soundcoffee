@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { Suspense } from "react";
 import Header from "@/components/Header";
 import PodcastEpisodes from "@/components/PodcastEpisodes";
 import ShopGrid from "@/components/ShopGrid";
@@ -44,16 +45,16 @@ export default function Home() {
 
         {/* ---------- THE CLUB ---------- */}
         <section id="club" className="border-b-4 border-ink bg-paper">
-          <div className="mx-auto max-w-6xl px-6 py-20">
+          <div className="mx-auto max-w-6xl px-6 py-20 text-center">
             <h2 className="font-display text-4xl tracking-wide text-ink sm:text-5xl">
               THE COFFEE CLUB
             </h2>
-            <p className="mt-4 max-w-2xl font-serif text-lg text-ink/80">
+            <p className="mx-auto mt-4 max-w-2xl font-serif text-lg text-ink/80">
               Two ways in. Both get you the same membership.
             </p>
 
             <div className="mt-12 grid gap-8 sm:grid-cols-2">
-              <div className="border-2 border-ink p-8">
+              <div className="flex flex-col items-center border-2 border-ink p-8 text-center">
                 <span className="font-display text-sm tracking-widest text-rust">
                   01 &mdash; BUY THE COFFEE
                 </span>
@@ -61,12 +62,20 @@ export default function Home() {
                   Purchase a bag
                 </h3>
                 <p className="mt-3 font-serif text-ink/75">
-                  Any coffee order gets you into the club. Attach your Nostr
-                  npub at checkout and you&rsquo;re in.
+                  Any coffee order gets you into the club. Your nostr npub
+                  makes it possible.
                 </p>
+                <div className="mt-5">
+                  <a
+                    href="/#shop?seller=sound-coffee"
+                    className="inline-block border-2 border-ink bg-ink px-5 py-2.5 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust"
+                  >
+                    BUY COFFEE
+                  </a>
+                </div>
               </div>
 
-              <div className="border-2 border-ink p-8">
+              <div className="flex flex-col items-center border-2 border-ink p-8 text-center">
                 <span className="font-display text-sm tracking-widest text-jade">
                   02 &mdash; BOOST THE SHOW
                 </span>
@@ -93,22 +102,24 @@ export default function Home() {
 
         {/* ---------- SHOP ---------- */}
         <section id="shop" className="border-b-4 border-ink bg-paper">
-          <div className="mx-auto max-w-6xl px-6 py-20">
+          <div className="mx-auto max-w-6xl px-6 py-20 text-center">
             <h2 className="font-display text-4xl tracking-wide text-ink sm:text-5xl">
               SHOP
             </h2>
 
-            <ShopGrid />
+            <Suspense fallback={null}>
+              <ShopGrid />
+            </Suspense>
           </div>
         </section>
 
         {/* ---------- LISTEN ---------- */}
         <section id="listen" className="border-b-4 border-ink bg-ink text-paper">
-          <div className="mx-auto max-w-6xl px-6 py-20">
+          <div className="mx-auto max-w-6xl px-6 py-20 text-center">
             <h2 className="font-display text-4xl tracking-wide sm:text-5xl">
               LISTEN
             </h2>
-            <p className="mt-4 max-w-2xl font-serif text-lg text-paper/80">
+            <p className="mx-auto mt-4 max-w-2xl font-serif text-lg text-paper/80">
               Conversations in the coffee shop. New edition most months.
             </p>
 

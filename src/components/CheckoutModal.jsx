@@ -39,6 +39,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
   const [invoice, setInvoice] = useState(null);
   const [qrDataUrl, setQrDataUrl] = useState(null);
   const [orderId, setOrderId] = useState(null);
+  const [brantaLink, setBrantaLink] = useState(null);
 
   const isFiatUsd = listing.price && (listing.price.currency || "").toLowerCase() === "usd";
   const directSats = listing.price ? satsFromSatsOrBtc(listing.price) : null;
@@ -104,17 +105,46 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
       });
 
       const lnurlData = await resolveLud16(sellerProfile.lud16);
-      const pr = await requestPlainInvoice({
+      const { pr, verify } = await requestPlainInvoice({
         callback: lnurlData.callback,
         amountMsats: totalSats * 1000,
         comment: `Order ${newOrderId}`,
       });
+
+      // Register the order with our backend so the scheduled job can
+      // watch for settlement (via the verify URL, when the provider
+      // supports LUD-21) and auto-confirm club membership. Best-effort —
+      // if this fails, checkout still works, it just falls back fully to
+      // the buyer's own "I've paid" confirmation.
+      fetch("/api/pending-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: newOrderId,
+          buyerPubkey: pubkey,
+          sellerPubkey,
+          invoice: pr,
+          verifyUrl: verify,
+          amountSats: totalSats,
+        }),
+      }).catch(() => {});
 
       const qr = await QRCode.toDataURL(pr.toUpperCase(), { margin: 1, width: 320 });
 
       setInvoice(pr);
       setQrDataUrl(qr);
       setStatus("invoice");
+
+      // Best-effort — if Branta isn't configured yet, this just silently
+      // does nothing and the invoice/QR flow works exactly as before.
+      fetch("/api/branta/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoice: pr }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => data?.verifyLink && setBrantaLink(data.verifyLink))
+        .catch(() => {});
     } catch (e) {
       setError(e.message || "Something went wrong placing the order.");
       setStatus("error");
@@ -290,6 +320,16 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
                 className="w-full resize-none border-2 border-ink bg-white p-2 font-mono text-xs text-ink"
                 rows={3}
               />
+              {brantaLink && (
+                <a
+                  href={brantaLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block font-serif text-xs text-jade underline"
+                >
+                  ✓ Verify this is really Sound Coffee (via Branta)
+                </a>
+              )}
               <button
                 onClick={() => navigator.clipboard.writeText(invoice)}
                 className="w-full border-2 border-ink px-4 py-2 font-display text-sm tracking-widest text-ink hover:border-jade hover:text-jade"
