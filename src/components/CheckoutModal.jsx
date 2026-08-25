@@ -9,6 +9,7 @@ import { resolveLud16, requestPlainInvoice } from "@/lib/zap";
 import { giftWrapForBoth } from "@/lib/nip17";
 import { DEFAULT_RELAYS } from "@/lib/relays";
 import { useBtcUsdPrice, usdToSats } from "@/hooks/useBtcUsdPrice";
+import { useShippingOption } from "@/hooks/useShippingOption";
 import LoginModal from "./LoginModal";
 
 let pool;
@@ -41,10 +42,21 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
   const [orderId, setOrderId] = useState(null);
   const [brantaLink, setBrantaLink] = useState(null);
 
+  const shippingCoord = listing.shippingOptionCoords?.[0] || null;
+  const { option: shippingOption, loading: shippingLoading } = useShippingOption(shippingCoord);
+
   const isFiatUsd = listing.price && (listing.price.currency || "").toLowerCase() === "usd";
   const directSats = listing.price ? satsFromSatsOrBtc(listing.price) : null;
   const unitSats = directSats ?? (isFiatUsd ? usdToSats(listing.price.amount, btcUsdPrice) : null);
-  const totalSats = unitSats ? unitSats * quantity : null;
+
+  const shippingIsFiatUsd =
+    shippingOption?.price && (shippingOption.price.currency || "").toLowerCase() === "usd";
+  const shippingSats = shippingOption?.price
+    ? (satsFromSatsOrBtc(shippingOption.price) ??
+       (shippingIsFiatUsd ? usdToSats(shippingOption.price.amount, btcUsdPrice) : null))
+    : 0;
+
+  const totalSats = unitSats ? unitSats * quantity + (shippingSats || 0) : null;
   const requiresShipping = listing.format === "physical";
 
   async function sendGiftWrapped(eventTemplate) {
@@ -97,6 +109,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
       ];
       if (address.trim()) orderTags.push(["address", address.trim()]);
       if (email.trim()) orderTags.push(["email", email.trim()]);
+      if (shippingCoord) orderTags.push(["shipping", shippingCoord]);
 
       await sendGiftWrapped({
         kind: 16,
@@ -274,9 +287,29 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
                 />
               </div>
 
+              {shippingCoord && (
+                <div className="border-t-2 border-ink/10 pt-3 text-xs text-ink/60">
+                  {shippingLoading ? (
+                    "Loading shipping option…"
+                  ) : shippingOption ? (
+                    <p>
+                      {shippingOption.title}
+                      {shippingSats ? ` — ${shippingSats.toLocaleString()} sats` : " — free"}
+                    </p>
+                  ) : (
+                    "Couldn't load the shipping option for this listing."
+                  )}
+                </div>
+              )}
+
               {totalSats && (
                 <p className="border-t-2 border-ink/10 pt-3 font-display text-lg text-ink">
                   Total: {totalSats.toLocaleString()} sats
+                  {shippingSats ? (
+                    <span className="block text-xs font-serif text-ink/50">
+                      (includes {shippingSats.toLocaleString()} sats shipping)
+                    </span>
+                  ) : null}
                 </p>
               )}
 

@@ -50,7 +50,7 @@ export default function ListeningLair() {
             alt="Conversations in the coffee shop."
             width={1536}
             height={1024}
-            className="mx-auto -mt-2 h-[240px] w-auto sm:h-[280px]"
+            className="mx-auto -mt-4 h-[300px] w-auto sm:h-[350px]"
           />
         </div>
 

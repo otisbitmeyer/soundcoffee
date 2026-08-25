@@ -30,6 +30,14 @@ export default function SellPage() {
   const [images, setImages] = useState("");
   const [format, setFormat] = useState("physical");
 
+  // Shipping (Gamma Markets extension to NIP-99, kind 30406). Optional —
+  // only published if a shipping price is given. One option per listing
+  // for now; the spec allows multiple, this keeps the form simple.
+  const [shipPrice, setShipPrice] = useState("");
+  const [shipCurrency, setShipCurrency] = useState("USD");
+  const [shipCountry, setShipCountry] = useState("US");
+  const [shipService, setShipService] = useState("standard");
+
   const [status, setStatus] = useState("form"); // form | working | done | error
   const [error, setError] = useState("");
   const [publishedEventId, setPublishedEventId] = useState(null);
@@ -75,6 +83,29 @@ export default function SellPage() {
       if (summary.trim()) tags.push(["summary", summary.trim()]);
       for (const url of imageUrls) tags.push(["image", url]);
 
+      const pool = new SimplePool();
+
+      // Publish the shipping option first (if provided), so we can
+      // reference its coordinate from the listing itself.
+      if (format === "physical" && shipPrice) {
+        const shipDTag = `${dTag}-shipping`;
+        const shipTemplate = {
+          kind: 30406,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: [
+            ["d", shipDTag],
+            ["title", `${shipService} shipping`],
+            ["price", shipPrice, shipCurrency],
+            ["country", shipCountry],
+            ["service", shipService],
+          ],
+          content: `${shipService} shipping`,
+        };
+        const signedShip = await signEvent(shipTemplate);
+        await Promise.any(pool.publish(DEFAULT_RELAYS, signedShip));
+        tags.push(["shipping_option", `30406:${pubkey}:${shipDTag}`]);
+      }
+
       const template = {
         kind: 30402,
         created_at: Math.floor(Date.now() / 1000),
@@ -83,8 +114,6 @@ export default function SellPage() {
       };
 
       const signed = await signEvent(template);
-
-      const pool = new SimplePool();
       await Promise.any(pool.publish(DEFAULT_RELAYS, signed));
 
       setPublishedEventId(signed.id);
@@ -101,6 +130,7 @@ export default function SellPage() {
     setDescription("");
     setPriceAmount("");
     setImages("");
+    setShipPrice("");
     setStatus("form");
     setPublishedEventId(null);
   }
@@ -237,6 +267,71 @@ export default function SellPage() {
                   <option value="digital">Digital</option>
                 </select>
               </div>
+
+              {format === "physical" && (
+                <div className="border-2 border-ink/20 p-4">
+                  <label className="block font-display text-xs tracking-widest text-ink/60">
+                    SHIPPING (OPTIONAL)
+                  </label>
+                  <p className="mt-1 mb-3 text-xs italic text-ink/50">
+                    Leave price blank to skip &mdash; buyers won&rsquo;t be
+                    shown a shipping cost.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-display text-xs tracking-widest text-ink/50">
+                        PRICE
+                      </label>
+                      <input
+                        type="number"
+                        value={shipPrice}
+                        onChange={(e) => setShipPrice(e.target.value)}
+                        className="mt-1 w-full border-2 border-ink/30 px-3 py-2 focus:border-ink focus:outline-none"
+                        placeholder="5.99"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-display text-xs tracking-widest text-ink/50">
+                        CURRENCY
+                      </label>
+                      <select
+                        value={shipCurrency}
+                        onChange={(e) => setShipCurrency(e.target.value)}
+                        className="mt-1 w-full border-2 border-ink/30 px-3 py-2 focus:border-ink focus:outline-none"
+                      >
+                        <option value="USD">USD</option>
+                        <option value="sats">sats</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-display text-xs tracking-widest text-ink/50">
+                        COUNTRY
+                      </label>
+                      <input
+                        value={shipCountry}
+                        onChange={(e) => setShipCountry(e.target.value)}
+                        className="mt-1 w-full border-2 border-ink/30 px-3 py-2 font-mono text-sm uppercase focus:border-ink focus:outline-none"
+                        placeholder="US"
+                        maxLength={2}
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-display text-xs tracking-widest text-ink/50">
+                        SERVICE
+                      </label>
+                      <select
+                        value={shipService}
+                        onChange={(e) => setShipService(e.target.value)}
+                        className="mt-1 w-full border-2 border-ink/30 px-3 py-2 focus:border-ink focus:outline-none"
+                      >
+                        <option value="standard">Standard</option>
+                        <option value="express">Express</option>
+                        <option value="pickup">Local pickup</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {error && (
                 <p className="border-2 border-rust bg-rust/10 px-3 py-2 text-rust">

@@ -24,6 +24,9 @@ function parseListing(event) {
   const priceTag = event.tags.find((t) => t[0] === "price");
   const images = getAllTags(event, "image").map((t) => t[1]);
   const typeTag = event.tags.find((t) => t[0] === "type");
+  const shippingOptionCoords = event.tags
+    .filter((t) => t[0] === "shipping_option")
+    .map((t) => t[1]);
 
   return {
     id: event.id,
@@ -42,6 +45,7 @@ function parseListing(event) {
     // Gamma Markets NIP-99 e-commerce extension: ["type", "<simple|variable|variation>", "<digital|physical>"]
     productType: typeTag?.[1] || "simple",
     format: typeTag?.[2] || "digital",
+    shippingOptionCoords,
     images,
     hashtags: getAllTags(event, "t").map((t) => t[1]),
     createdAt: event.created_at,

@@ -56,7 +56,7 @@ export default function Home() {
               alt="Two doors, one membership."
               width={2172}
               height={724}
-              className="mx-auto mt-4 h-auto w-full max-w-md"
+              className="mx-auto -mt-1 h-auto w-[336px]"
             />
 
             <div className="mt-12 grid gap-8 sm:grid-cols-2">
