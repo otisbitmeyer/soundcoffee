@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
+import { useProfile } from "@/hooks/useProfile";
 import LoginModal from "./LoginModal";
 
 function shortNpub(npub) {
@@ -11,8 +12,11 @@ function shortNpub(npub) {
 }
 
 export default function Header() {
-  const { isLoggedIn, npub, logout } = useAuth();
+  const { isLoggedIn, pubkey, npub, logout } = useAuth();
+  const { profile } = useProfile(pubkey);
   const [modalOpen, setModalOpen] = useState(false);
+
+  const displayName = profile?.display_name || profile?.name || shortNpub(npub);
 
   return (
     <>
@@ -39,9 +43,16 @@ export default function Header() {
             <button
               onClick={logout}
               title="Click to log out"
-              className="border-2 border-ink px-4 py-2 font-display text-sm tracking-widest text-ink transition hover:border-rust hover:text-rust"
+              className="flex items-center gap-2 border-2 border-ink px-3 py-2 font-display text-sm tracking-widest text-ink transition hover:border-rust hover:text-rust"
             >
-              {shortNpub(npub)}
+              {profile?.picture ? (
+                <img
+                  src={profile.picture}
+                  alt=""
+                  className="h-6 w-6 rounded-full border border-ink object-cover"
+                />
+              ) : null}
+              {displayName}
             </button>
           ) : (
             <button

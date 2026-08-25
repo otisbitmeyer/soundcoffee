@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Header from "@/components/Header";
+import PodcastEpisodes from "@/components/PodcastEpisodes";
 
 export default function Home() {
   return (
@@ -9,21 +10,25 @@ export default function Home() {
       <main className="flex-1">
         {/* ---------- HERO ---------- */}
         <section className="border-b-4 border-ink bg-ink text-paper">
-          <div className="mx-auto max-w-5xl px-6 py-24 sm:py-32">
-            <h1 className="font-display text-7xl leading-[0.9] tracking-wide sm:text-9xl">
-              SOUND
-              <br />
-              COFFEE
-            </h1>
-
-            <div className="mt-10 max-w-xl space-y-3 font-serif text-lg text-paper/80 sm:text-xl">
-              <p>Welcome! We&rsquo;re glad you&rsquo;re here.</p>
+          <div className="mx-auto max-w-2xl px-6 py-24 text-center sm:py-32">
+            <div className="space-y-4 font-serif text-lg text-paper/85 sm:text-xl">
               <p>
-                The coffee is fresh and we&rsquo;re right in the middle of
-                making some cool things.
+                Greetings, friend. I&rsquo;m glad you&rsquo;re here. Pull up a
+                chair. The coffee is fresh. The conversation is evolving.
               </p>
-              <p>Wanna join us?</p>
+              <p>
+                If you like what you taste (or hear), join us. SOUND COFFEE
+                is still being built. Let&rsquo;s make some magic.
+              </p>
             </div>
+
+            <Image
+              src="/signature.png"
+              alt="Otis Bitmeyer"
+              width={1774}
+              height={887}
+              className="mx-auto mt-8 h-auto w-48 sm:w-60"
+            />
 
             <div className="mt-10">
               <a
@@ -73,12 +78,6 @@ export default function Home() {
                 </p>
               </div>
             </div>
-
-            <p className="mt-10 max-w-2xl font-serif text-ink/70">
-              Club members can list their own goods for other members to
-              browse right here on the site &mdash; sourced straight from the
-              open Nostr network.
-            </p>
           </div>
         </section>
 
@@ -126,29 +125,10 @@ export default function Home() {
               LISTEN
             </h2>
             <p className="mt-4 max-w-2xl font-serif text-lg text-paper/80">
-              The Sound Coffee podcast &mdash; new episodes soon.
+              Conversations in the coffee shop. New edition most months.
             </p>
 
-            <div className="mt-12 grid gap-4 sm:grid-cols-2">
-              {[1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between border-2 border-paper/30 p-6"
-                >
-                  <div>
-                    <span className="font-display text-sm tracking-widest text-jade">
-                      EPISODE {i}
-                    </span>
-                    <h3 className="mt-2 font-display text-xl">
-                      Episode title goes here
-                    </h3>
-                  </div>
-                  <span className="font-display text-sm tracking-widest text-paper/50">
-                    PLAY &rarr;
-                  </span>
-                </div>
-              ))}
-            </div>
+            <PodcastEpisodes />
           </div>
         </section>
       </main>
