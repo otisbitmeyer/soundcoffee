@@ -67,7 +67,7 @@ export default function Home() {
                 </p>
                 <div className="mt-5">
                   <a
-                    href="/#shop?seller=sound-coffee"
+                    href="/?seller=sound-coffee#shop"
                     className="inline-block border-2 border-ink bg-ink px-5 py-2.5 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust"
                   >
                     BUY COFFEE
