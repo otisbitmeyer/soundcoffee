@@ -4,10 +4,57 @@ import { useEffect, useState } from "react";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import { useAuth } from "@/context/AuthContext";
+import { useProfile } from "@/hooks/useProfile";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
 function shortNpub(pubkey) {
   return `${pubkey.slice(0, 10)}…${pubkey.slice(-6)}`;
+}
+
+function MemberRow({ s }) {
+  const { profile } = useProfile(s.pubkey);
+  const displayName = profile?.display_name || profile?.name;
+
+  return (
+    <tr className="border-b border-ink/10">
+      <td className="py-2 pr-4">
+        <div className="flex items-center gap-2">
+          {profile?.picture ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={profile.picture}
+              alt=""
+              className="h-7 w-7 shrink-0 rounded-full border border-ink/30 object-cover"
+            />
+          ) : (
+            <div className="h-7 w-7 shrink-0 rounded-full border border-ink/20 bg-ink/5" />
+          )}
+          <div>
+            {displayName && (
+              <div className="font-display text-sm text-ink">{displayName}</div>
+            )}
+            <div className="font-mono text-xs text-ink/50">
+              {shortNpub(s.pubkey)}
+            </div>
+          </div>
+        </div>
+      </td>
+      <td className="py-2 pr-4">
+        {s.isMember ? (
+          <span className="text-jade">✓</span>
+        ) : (
+          <span className="text-ink/30">—</span>
+        )}
+      </td>
+      <td className="py-2 pr-4">{s.totalZapSats.toLocaleString()} sats</td>
+      <td className="py-2 pr-4">{s.zapCount}</td>
+      <td className="py-2 pr-4">{s.purchaseCount}</td>
+      <td className="py-2 pr-4">{s.totalPurchaseSats.toLocaleString()} sats</td>
+      <td className="py-2 font-serif text-xs text-ink/50">
+        {s.lastActivityAt ? new Date(s.lastActivityAt).toLocaleDateString() : "—"}
+      </td>
+    </tr>
+  );
 }
 
 export default function AdminPage() {
@@ -81,8 +128,8 @@ export default function AdminPage() {
                 <table className="w-full border-collapse text-left font-serif text-sm">
                   <thead>
                     <tr className="border-b-2 border-ink font-display text-xs tracking-widest text-ink/60">
-                      <th className="py-2 pr-4">NPUB</th>
                       <th className="py-2 pr-4">MEMBER</th>
+                      <th className="py-2 pr-4">CLUB</th>
                       <th className="py-2 pr-4">ZAPPED</th>
                       <th className="py-2 pr-4">ZAPS</th>
                       <th className="py-2 pr-4">PURCHASES</th>
@@ -92,31 +139,7 @@ export default function AdminPage() {
                   </thead>
                   <tbody>
                     {sortedStats.map((s) => (
-                      <tr key={s.pubkey} className="border-b border-ink/10">
-                        <td className="py-2 pr-4 font-mono text-xs">
-                          {shortNpub(s.pubkey)}
-                        </td>
-                        <td className="py-2 pr-4">
-                          {s.isMember ? (
-                            <span className="text-jade">✓</span>
-                          ) : (
-                            <span className="text-ink/30">—</span>
-                          )}
-                        </td>
-                        <td className="py-2 pr-4">
-                          {s.totalZapSats.toLocaleString()} sats
-                        </td>
-                        <td className="py-2 pr-4">{s.zapCount}</td>
-                        <td className="py-2 pr-4">{s.purchaseCount}</td>
-                        <td className="py-2 pr-4">
-                          {s.totalPurchaseSats.toLocaleString()} sats
-                        </td>
-                        <td className="py-2 font-serif text-xs text-ink/50">
-                          {s.lastActivityAt
-                            ? new Date(s.lastActivityAt).toLocaleDateString()
-                            : "—"}
-                        </td>
-                      </tr>
+                      <MemberRow key={s.pubkey} s={s} />
                     ))}
                   </tbody>
                 </table>
