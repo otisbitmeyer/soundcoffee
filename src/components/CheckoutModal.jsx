@@ -8,6 +8,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { resolveLud16, requestPlainInvoice } from "@/lib/zap";
 import { giftWrapForBoth } from "@/lib/nip17";
 import { DEFAULT_RELAYS } from "@/lib/relays";
+import { useBtcUsdPrice, usdToSats } from "@/hooks/useBtcUsdPrice";
 import LoginModal from "./LoginModal";
 
 let pool;
@@ -16,17 +17,17 @@ function getPool() {
   return pool;
 }
 
-function centsToSats(price) {
-  if (!price) return null;
+function satsFromSatsOrBtc(price) {
   const currency = (price.currency || "").toLowerCase();
   if (currency === "sat" || currency === "sats") return Math.round(Number(price.amount));
   if (currency === "btc") return Math.round(Number(price.amount) * 100_000_000);
-  return null; // fiat — not yet supported for Lightning checkout
+  return null;
 }
 
 export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
   const { isLoggedIn, pubkey, signEvent, nip44Encrypt } = useAuth();
   const { profile: sellerProfile } = useProfile(sellerPubkey);
+  const { btcUsdPrice, loading: priceLoading, error: priceError } = useBtcUsdPrice();
 
   const [showLogin, setShowLogin] = useState(false);
   const [quantity, setQuantity] = useState(1);
@@ -39,7 +40,9 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
   const [qrDataUrl, setQrDataUrl] = useState(null);
   const [orderId, setOrderId] = useState(null);
 
-  const unitSats = centsToSats(listing.price);
+  const isFiatUsd = listing.price && (listing.price.currency || "").toLowerCase() === "usd";
+  const directSats = listing.price ? satsFromSatsOrBtc(listing.price) : null;
+  const unitSats = directSats ?? (isFiatUsd ? usdToSats(listing.price.amount, btcUsdPrice) : null);
   const totalSats = unitSats ? unitSats * quantity : null;
   const requiresShipping = listing.format === "physical";
 
@@ -165,12 +168,28 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
             <div className="space-y-4 font-serif text-sm text-ink/80">
               <div>
                 <h3 className="font-display text-lg text-ink">{listing.title}</h3>
-                {unitSats ? (
-                  <p className="mt-1 text-ink/60">{unitSats.toLocaleString()} sats each</p>
+                {directSats ? (
+                  <p className="mt-1 text-ink/60">{directSats.toLocaleString()} sats each</p>
+                ) : isFiatUsd ? (
+                  priceLoading ? (
+                    <p className="mt-1 text-ink/50 italic">Fetching current sats price…</p>
+                  ) : priceError || !unitSats ? (
+                    <p className="mt-1 text-rust">
+                      Couldn&rsquo;t fetch a live sats price right now &mdash;
+                      try again in a moment.
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-ink/60">
+                      ${listing.price.amount} &asymp; {unitSats.toLocaleString()} sats each{" "}
+                      <span className="text-ink/40">
+                        (${btcUsdPrice.toLocaleString()}/BTC)
+                      </span>
+                    </p>
+                  )
                 ) : (
                   <p className="mt-1 text-rust">
                     Priced in {listing.price?.currency || "an unsupported currency"} —
-                    Lightning checkout needs a sats price.
+                    Lightning checkout needs a sats or USD price.
                   </p>
                 )}
               </div>

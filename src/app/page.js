@@ -2,6 +2,8 @@ import Image from "next/image";
 import Header from "@/components/Header";
 import PodcastEpisodes from "@/components/PodcastEpisodes";
 import ShopGrid from "@/components/ShopGrid";
+import ZapButton from "@/components/ZapButton";
+import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
 export default function Home() {
   return (
@@ -72,9 +74,18 @@ export default function Home() {
                   Zap the podcast
                 </h3>
                 <p className="mt-3 font-serif text-ink/75">
-                  Send a boost (a Lightning zap) to the show and you&rsquo;re
-                  in &mdash; no purchase necessary.
+                  Send a boost of 100 sats or greater to the podcast and
+                  you&rsquo;re in, easy peasy.
                 </p>
+                <div className="mt-5">
+                  <ZapButton
+                    recipientPubkey={SOUND_COFFEE_PUBKEY}
+                    label="Boost the podcast"
+                    className="border-2 border-ink bg-ink px-5 py-2.5 font-display text-sm tracking-widest text-paper transition hover:bg-jade hover:border-jade"
+                  >
+                    ⚡ BOOST THE PODCAST
+                  </ZapButton>
+                </div>
               </div>
             </div>
           </div>

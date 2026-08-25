@@ -48,9 +48,9 @@ export default function ListeningLair() {
           <Image
             src="/listening-lair-graphic.png"
             alt="Conversations in the coffee shop."
-            width={1024}
-            height={1536}
-            className="mx-auto mt-6 h-64 w-auto sm:h-72"
+            width={1536}
+            height={1024}
+            className="mx-auto mt-6 h-40 w-auto sm:h-48"
           />
         </div>
 
@@ -60,11 +60,6 @@ export default function ListeningLair() {
               <ShowCard key={feed.id} feed={feed} />
             ))}
           </div>
-
-          <p className="mt-10 text-center font-serif italic text-paper/50">
-            Club members&rsquo; own shows and music will show up here too,
-            straight from their own feeds.
-          </p>
         </div>
       </main>
 
