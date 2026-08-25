@@ -1,9 +1,10 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { generateSecretKey, getPublicKey, finalizeEvent } from "nostr-tools/pure";
 import { nsecEncode, npubEncode, decode } from "nostr-tools/nip19";
 import { getConversationKey, encrypt as nip44EncryptRaw } from "nostr-tools/nip44";
+import { BunkerSigner, parseBunkerInput } from "nostr-tools/nip46";
 
 const AuthContext = createContext(null);
 
@@ -24,8 +25,9 @@ export function AuthProvider({ children }) {
   //   extension itself holds their key, not this site.
   const [pubkey, setPubkey] = useState(null);
   const [secretKey, setSecretKey] = useState(null);
-  const [method, setMethod] = useState(null); // "extension" | "created" | "imported"
+  const [method, setMethod] = useState(null); // "extension" | "created" | "imported" | "bunker"
   const [restoring, setRestoring] = useState(true);
+  const bunkerSignerRef = useRef(null);
 
   // On first load, silently try to restore an extension session. Created/
   // imported-key sessions can't be restored this way on purpose — those
@@ -75,6 +77,24 @@ export function AuthProvider({ children }) {
     return { secretKey: sk, pubkey: pk, nsec: nsecEncode(sk), npub: npubEncode(pk) };
   }, []);
 
+  // NIP-46 remote signer login (e.g. Amber on Android). `bunkerInput` is
+  // either a "bunker://..." connection string or an nsec.app-style
+  // NIP-05 identifier. The actual private key never touches this site —
+  // it stays on the signer device the whole time.
+  const loginWithBunker = useCallback(async (bunkerInput) => {
+    const bp = await parseBunkerInput(bunkerInput.trim());
+    if (!bp) throw new Error("Couldn't understand that connection string.");
+    const clientSecretKey = generateSecretKey();
+    const signer = BunkerSigner.fromBunker(clientSecretKey, bp);
+    await signer.connect();
+    const pk = await signer.getPublicKey();
+    bunkerSignerRef.current = signer;
+    setPubkey(pk);
+    setSecretKey(null);
+    setMethod("bunker");
+    return pk;
+  }, []);
+
   const importKey = useCallback((nsecOrHex) => {
     const trimmed = nsecOrHex.trim();
     let sk;
@@ -99,6 +119,10 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(() => {
+    if (bunkerSignerRef.current) {
+      bunkerSignerRef.current.close?.();
+      bunkerSignerRef.current = null;
+    }
     setPubkey(null);
     setSecretKey(null);
     setMethod(null);
@@ -115,6 +139,10 @@ export function AuthProvider({ children }) {
       if (method === "extension") {
         if (!window.nostr) throw new Error("Nostr extension not available.");
         return window.nostr.signEvent(template);
+      }
+      if (method === "bunker") {
+        if (!bunkerSignerRef.current) throw new Error("Remote signer not connected.");
+        return bunkerSignerRef.current.signEvent(template);
       }
       if (!secretKey) throw new Error("No key available to sign with.");
       return finalizeEvent(template, secretKey);
@@ -139,6 +167,10 @@ export function AuthProvider({ children }) {
         }
         return window.nostr.nip44.encrypt(recipientPubkey, plaintext);
       }
+      if (method === "bunker") {
+        if (!bunkerSignerRef.current) throw new Error("Remote signer not connected.");
+        return bunkerSignerRef.current.nip44Encrypt(recipientPubkey, plaintext);
+      }
       if (!secretKey) throw new Error("No key available to encrypt with.");
       const conversationKey = getConversationKey(secretKey, recipientPubkey);
       return nip44EncryptRaw(plaintext, conversationKey);
@@ -156,6 +188,7 @@ export function AuthProvider({ children }) {
         isLoggedIn: !!pubkey,
         restoring,
         loginWithExtension,
+        loginWithBunker,
         createNewKeys,
         importKey,
         logout,

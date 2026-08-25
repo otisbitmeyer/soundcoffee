@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useProfile } from "@/hooks/useProfile";
 import { resolveLud16, requestPlainInvoice } from "@/lib/zap";
 import { giftWrapForBoth } from "@/lib/nip17";
-import { DEFAULT_RELAYS } from "@/lib/relays";
+import { DEFAULT_RELAYS, getDmRelaysFor } from "@/lib/relays";
 import { useBtcUsdPrice, usdToSats } from "@/hooks/useBtcUsdPrice";
 import { useShippingOption } from "@/hooks/useShippingOption";
 import LoginModal from "./LoginModal";
@@ -26,7 +26,7 @@ function satsFromSatsOrBtc(price) {
 }
 
 export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
-  const { isLoggedIn, pubkey, signEvent, nip44Encrypt } = useAuth();
+  const { isLoggedIn, pubkey, npub, signEvent, nip44Encrypt } = useAuth();
   const { profile: sellerProfile } = useProfile(sellerPubkey);
   const { btcUsdPrice, loading: priceLoading, error: priceError } = useBtcUsdPrice();
 
@@ -67,7 +67,15 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
       authNip44Encrypt: nip44Encrypt,
       authSignEvent: signEvent,
     });
-    await Promise.any(getPool().publish(DEFAULT_RELAYS, toSeller));
+
+    // Publish to wherever the seller actually said they read DMs (NIP-17
+    // kind 10050), not just our own generic relay list — otherwise the
+    // message can land somewhere they never check. Include our defaults
+    // too, for redundancy in case they haven't set a DM relay list.
+    const sellerDmRelays = await getDmRelaysFor(sellerPubkey);
+    const publishTargets = [...new Set([...sellerDmRelays, ...DEFAULT_RELAYS])];
+
+    await Promise.any(getPool().publish(publishTargets, toSeller));
     await Promise.any(getPool().publish(DEFAULT_RELAYS, toSelf));
   }
 
@@ -116,6 +124,23 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
         tags: orderTags,
         content: notes.trim(),
       });
+
+      // Email notification — a reliable fallback alongside the DM, since
+      // not every Nostr client supports NIP-17 gift-wrapped messages yet.
+      fetch("/api/notify-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: newOrderId,
+          itemTitle: listing.title,
+          quantity,
+          amountSats: totalSats,
+          buyerNpub: npub,
+          buyerEmail: email.trim() || null,
+          address: address.trim() || null,
+          notes: notes.trim() || null,
+        }),
+      }).catch(() => {});
 
       const lnurlData = await resolveLud16(sellerProfile.lud16);
       const { pr, verify } = await requestPlainInvoice({

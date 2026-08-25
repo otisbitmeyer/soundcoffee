@@ -26,6 +26,7 @@ export function buildZapRequestTemplate({
   comment = "",
   eventId,
   aTag,
+  iTag,
 }) {
   const tags = [
     ["relays", ...relays],
@@ -34,6 +35,7 @@ export function buildZapRequestTemplate({
   ];
   if (eventId) tags.push(["e", eventId]);
   if (aTag) tags.push(["a", aTag]);
+  if (iTag) tags.push(["i", iTag]);
 
   return {
     kind: 9734,

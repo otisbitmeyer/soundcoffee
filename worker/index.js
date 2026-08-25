@@ -89,13 +89,40 @@ async function recordConfirmedPayment(env, { pubkey, type, amountSats, sourceId 
   await env.SOUND_COFFEE_KV.put(`stats:${pubkey}`, JSON.stringify(stats));
 }
 
+/**
+ * Records a zap tied to a specific podcast episode (via the "i" tag
+ * convention in src/lib/episodeId.js). Tracks both a running total (for
+ * "top episodes" ranking) and the individual entry with its comment (for
+ * the per-episode comment feed) — separate concerns, so both get stored.
+ */
+async function recordEpisodeZap(env, { episodeGuid, amountSats, comment, zapperPubkey, sourceId }) {
+  const seenKey = `seen-episode:${sourceId}`;
+  if (await env.SOUND_COFFEE_KV.get(seenKey)) return;
+  await env.SOUND_COFFEE_KV.put(seenKey, "1", { expirationTtl: 60 * 60 * 24 * 90 });
+
+  const totalKey = `episode-total:${episodeGuid}`;
+  const existingRaw = await env.SOUND_COFFEE_KV.get(totalKey);
+  const existing = existingRaw
+    ? JSON.parse(existingRaw)
+    : { episodeGuid, totalSats: 0, count: 0 };
+  existing.totalSats += amountSats;
+  existing.count += 1;
+  await env.SOUND_COFFEE_KV.put(totalKey, JSON.stringify(existing));
+
+  const entryKey = `episode-entry:${episodeGuid}:${sourceId}`;
+  await env.SOUND_COFFEE_KV.put(
+    entryKey,
+    JSON.stringify({ amountSats, comment: comment || "", zapperPubkey, at: Date.now() })
+  );
+}
+
 // ---------------------------------------------------------------------
 // HTTP API
 // ---------------------------------------------------------------------
 
 async function handlePendingPayment(request, env) {
   const body = await request.json();
-  const { id, type, pubkey, sellerPubkey, invoice, verifyUrl, amountSats } = body;
+  const { id, type, pubkey, sellerPubkey, invoice, verifyUrl, amountSats, episodeGuid, comment } = body;
 
   if (!id || !type || !pubkey || !invoice || !amountSats) {
     return jsonResponse({ error: "Missing required fields." }, 422);
@@ -114,6 +141,8 @@ async function handlePendingPayment(request, env) {
       invoice,
       verifyUrl: verifyUrl || null,
       amountSats,
+      episodeGuid: episodeGuid || null,
+      comment: comment || "",
       status: "pending",
       createdAt: Date.now(),
     }),
@@ -154,6 +183,106 @@ async function handleBrantaVerify(request, env) {
 
   const verifyLink = `https://guardrail.branta.pro/v1/verify/address?payment=${encodeURIComponent(invoice)}`;
   return jsonResponse({ verifyLink });
+}
+
+async function sendEmail(env, { to, subject, text }) {
+  if (!env.RESEND_API_KEY) return { skipped: true };
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      // Resend's shared test sender — works immediately with no domain
+      // setup. Swap for a verified address on your own domain once one
+      // is set up (e.g. orders@soundcoffee.xyz) for better deliverability.
+      from: env.EMAIL_FROM || "Sound Coffee <onboarding@resend.dev>",
+      to,
+      subject,
+      text,
+    }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return { sent: true };
+}
+
+async function handleNotifyOrder(request, env) {
+  const body = await request.json();
+  const { orderId, itemTitle, quantity, amountSats, buyerNpub, buyerEmail, address, notes } = body;
+
+  if (!orderId || !itemTitle) {
+    return jsonResponse({ error: "Missing required fields." }, 422);
+  }
+
+  const summary = [
+    `New order: ${itemTitle} x${quantity || 1}`,
+    `Order ID: ${orderId}`,
+    `Amount: ${amountSats} sats`,
+    buyerNpub ? `Buyer npub: ${buyerNpub}` : null,
+    address ? `Shipping address:\n${address}` : null,
+    notes ? `Notes: ${notes}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const results = {};
+
+  if (env.ADMIN_EMAIL) {
+    try {
+      results.admin = await sendEmail(env, {
+        to: env.ADMIN_EMAIL,
+        subject: `☕ New order: ${itemTitle}`,
+        text: summary,
+      });
+    } catch (e) {
+      results.admin = { error: e.message };
+    }
+  }
+
+  if (buyerEmail) {
+    try {
+      results.buyer = await sendEmail(env, {
+        to: buyerEmail,
+        subject: `Your Sound Coffee order (${orderId})`,
+        text: `Thanks for your order!\n\n${summary}\n\nWe'll be in touch about shipping.`,
+      });
+    } catch (e) {
+      results.buyer = { error: e.message };
+    }
+  }
+
+  return jsonResponse({ ok: true, results });
+}
+
+async function handleEpisodeZaps(request, env) {
+  const url = new URL(request.url);
+  const guid = url.searchParams.get("guid");
+  if (!guid) return jsonResponse({ error: "Missing ?guid=" }, 422);
+
+  const totalRaw = await env.SOUND_COFFEE_KV.get(`episode-total:${guid}`);
+  const total = totalRaw ? JSON.parse(totalRaw) : { episodeGuid: guid, totalSats: 0, count: 0 };
+
+  const list = await env.SOUND_COFFEE_KV.list({ prefix: `episode-entry:${guid}:` });
+  const entries = await Promise.all(
+    list.keys.map(async (k) => JSON.parse(await env.SOUND_COFFEE_KV.get(k.name)))
+  );
+  entries.sort((a, b) => b.at - a.at);
+
+  return jsonResponse({ ...total, entries });
+}
+
+async function handleTopEpisodes(request, env) {
+  const url = new URL(request.url);
+  const limit = Number(url.searchParams.get("limit")) || 4;
+
+  const list = await env.SOUND_COFFEE_KV.list({ prefix: "episode-total:" });
+  const all = await Promise.all(
+    list.keys.map(async (k) => JSON.parse(await env.SOUND_COFFEE_KV.get(k.name)))
+  );
+  all.sort((a, b) => b.totalSats - a.totalSats);
+
+  return jsonResponse({ episodes: all.slice(0, limit) });
 }
 
 async function handleStats(request, env) {
@@ -305,8 +434,17 @@ async function handleFetch(request, env) {
   if (request.method === "POST" && url.pathname === "/api/branta/verify") {
     return handleBrantaVerify(request, env);
   }
+  if (request.method === "POST" && url.pathname === "/api/notify-order") {
+    return handleNotifyOrder(request, env);
+  }
   if (request.method === "GET" && url.pathname === "/api/stats") {
     return handleStats(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/episode-zaps") {
+    return handleEpisodeZaps(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/top-episodes") {
+    return handleTopEpisodes(request, env);
   }
   if (request.method === "GET" && url.pathname === "/api/club-members") {
     return handleClubMembers(env);
@@ -349,6 +487,15 @@ async function pollPendingPayments(env) {
           amountSats: payment.amountSats,
           sourceId,
         });
+        if (payment.type === "zap" && payment.episodeGuid) {
+          await recordEpisodeZap(env, {
+            episodeGuid: payment.episodeGuid,
+            amountSats: payment.amountSats,
+            comment: payment.comment,
+            zapperPubkey: payment.pubkey,
+            sourceId,
+          });
+        }
       }
     } catch {
       // provider unreachable this run — try again next run
@@ -392,6 +539,18 @@ async function pollZapReceiptsFromRelays(env) {
           amountSats,
           sourceId: `zap:${zapRequest.id}`,
         });
+
+        const iTag = zapRequest.tags.find((t) => t[0] === "i");
+        if (iTag && iTag[1]?.startsWith("podcast:episode:")) {
+          const episodeGuid = iTag[1].slice("podcast:episode:".length);
+          await recordEpisodeZap(env, {
+            episodeGuid,
+            amountSats,
+            comment: zapRequest.content,
+            zapperPubkey: zapRequest.pubkey,
+            sourceId: `zap:${zapRequest.id}`,
+          });
+        }
       } catch {
         // malformed receipt — skip it
       }

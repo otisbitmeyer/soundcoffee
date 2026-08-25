@@ -4,8 +4,8 @@ import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 
 export default function LoginModal({ onClose }) {
-  const { loginWithExtension, createNewKeys, importKey } = useAuth();
-  const [tab, setTab] = useState("extension"); // "extension" | "create" | "import"
+  const { loginWithExtension, loginWithBunker, createNewKeys, importKey } = useAuth();
+  const [tab, setTab] = useState("extension"); // "extension" | "bunker" | "create" | "import"
   const [error, setError] = useState("");
 
   // "create" flow state
@@ -15,6 +15,10 @@ export default function LoginModal({ onClose }) {
   // "import" flow state
   const [importValue, setImportValue] = useState("");
 
+  // "bunker" flow state
+  const [bunkerInput, setBunkerInput] = useState("");
+  const [connecting, setConnecting] = useState(false);
+
   async function handleExtension() {
     setError("");
     try {
@@ -22,6 +26,19 @@ export default function LoginModal({ onClose }) {
       onClose();
     } catch (e) {
       setError(e.message);
+    }
+  }
+
+  async function handleBunker() {
+    setError("");
+    setConnecting(true);
+    try {
+      await loginWithBunker(bunkerInput);
+      onClose();
+    } catch (e) {
+      setError(e.message || "Couldn't connect to that signer.");
+    } finally {
+      setConnecting(false);
     }
   }
 
@@ -58,9 +75,10 @@ export default function LoginModal({ onClose }) {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b-2 border-ink font-display text-xs tracking-widest">
+        <div className="flex border-b-2 border-ink font-display text-[10px] tracking-widest sm:text-xs">
           {[
             ["extension", "EXTENSION"],
+            ["bunker", "PHONE"],
             ["create", "CREATE NEW"],
             ["import", "IMPORT KEY"],
           ].map(([key, label]) => (
@@ -102,6 +120,40 @@ export default function LoginModal({ onClose }) {
               >
                 CONNECT EXTENSION
               </button>
+            </div>
+          )}
+
+          {/* --- BUNKER (mobile / Amber / remote signer) --- */}
+          {tab === "bunker" && (
+            <div className="space-y-4 font-serif text-sm text-ink/80">
+              <p>
+                On a phone? Use a remote signer app like{" "}
+                <strong>Amber</strong> (Android). Open Amber, copy the
+                connection string it gives you (starts with{" "}
+                <code className="text-xs">bunker://</code>), and paste it
+                below. Your private key stays on your phone the whole time
+                &mdash; this site never sees it.
+              </p>
+              <textarea
+                value={bunkerInput}
+                onChange={(e) => setBunkerInput(e.target.value)}
+                placeholder="bunker://..."
+                className="w-full resize-none border-2 border-ink bg-white p-2 font-mono text-xs text-ink"
+                rows={3}
+              />
+              <button
+                onClick={handleBunker}
+                disabled={!bunkerInput.trim() || connecting}
+                className="w-full border-2 border-ink bg-ink px-4 py-3 font-display text-sm tracking-widest text-paper hover:bg-rust hover:border-rust disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-ink disabled:hover:border-ink"
+              >
+                {connecting ? "CONNECTING…" : "CONNECT"}
+              </button>
+              {connecting && (
+                <p className="text-xs italic text-ink/50">
+                  Check your phone &mdash; Amber may be waiting for you to
+                  approve the connection.
+                </p>
+              )}
             </div>
           )}
 

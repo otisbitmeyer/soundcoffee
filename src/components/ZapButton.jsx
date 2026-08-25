@@ -8,6 +8,8 @@ export default function ZapButton({
   label,
   eventId,
   aTag,
+  episodeGuid,
+  onZapped,
   className,
   children,
 }) {
@@ -26,6 +28,8 @@ export default function ZapButton({
           label={label}
           eventId={eventId}
           aTag={aTag}
+          episodeGuid={episodeGuid}
+          onZapped={onZapped}
           onClose={() => setOpen(false)}
         />
       )}

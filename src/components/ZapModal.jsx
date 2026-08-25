@@ -5,6 +5,7 @@ import QRCode from "qrcode";
 import { useAuth } from "@/context/AuthContext";
 import { useProfile } from "@/hooks/useProfile";
 import { resolveLud16, buildZapRequestTemplate, requestZapInvoice } from "@/lib/zap";
+import { episodeExternalId } from "@/lib/episodeId";
 import { DEFAULT_RELAYS } from "@/lib/relays";
 import LoginModal from "./LoginModal";
 
@@ -16,6 +17,8 @@ export default function ZapModal({
   label = "Send a zap",
   eventId,
   aTag,
+  episodeGuid,
+  onZapped,
   onClose,
 }) {
   const { isLoggedIn, pubkey, signEvent } = useAuth();
@@ -87,6 +90,7 @@ export default function ZapModal({
         comment,
         eventId,
         aTag,
+        iTag: episodeGuid ? episodeExternalId(episodeGuid) : undefined,
       });
 
       const signed = await signEvent(template);
@@ -111,6 +115,8 @@ export default function ZapModal({
           invoice: pr,
           verifyUrl: verify,
           amountSats: effectiveAmount,
+          episodeGuid: episodeGuid || null,
+          comment,
         }),
       }).catch(() => {});
 
@@ -120,6 +126,7 @@ export default function ZapModal({
       setQrDataUrl(qr);
       setStatus("ready");
       startPolling(verify);
+      onZapped?.();
     } catch (e) {
       setError(e.message || "Something went wrong generating the invoice.");
       setStatus("error");

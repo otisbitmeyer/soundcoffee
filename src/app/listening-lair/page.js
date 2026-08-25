@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import Header from "@/components/Header";
+import TopEpisodes from "@/components/TopEpisodes";
 import { usePodcastFeed } from "@/hooks/usePodcastFeed";
 import { PODCAST_FEEDS } from "@/lib/podcastFeeds";
 
@@ -60,6 +61,8 @@ export default function ListeningLair() {
               <ShowCard key={feed.id} feed={feed} />
             ))}
           </div>
+
+          <TopEpisodes />
         </div>
       </main>
 
