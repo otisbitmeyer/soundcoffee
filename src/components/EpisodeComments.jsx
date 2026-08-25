@@ -1,8 +1,6 @@
 "use client";
 
 import { useProfile } from "@/hooks/useProfile";
-import { useEpisodeZaps } from "@/hooks/useEpisodeZaps";
-import ZapButton from "./ZapButton";
 
 function shortNpub(pubkey) {
   return `${pubkey.slice(0, 8)}…`;
@@ -50,40 +48,30 @@ function CommentEntry({ entry }) {
   );
 }
 
-export default function EpisodeComments({ episodeGuid, recipientPubkey, episodeTitle }) {
-  const { data, loading, refresh } = useEpisodeZaps(episodeGuid);
+// Purely a display of past zaps/comments — no zap action lives here
+// anymore, that's a separate always-visible button on the card itself.
+export default function EpisodeComments({ data, loading }) {
+  if (loading || !data) {
+    return (
+      <div className="border-t border-paper/20 px-6 py-3 font-serif text-xs italic text-paper/40">
+        Loading…
+      </div>
+    );
+  }
+
+  if (data.entries.length === 0) {
+    return (
+      <div className="border-t border-paper/20 px-6 py-3 font-serif text-xs italic text-paper/40">
+        No zaps yet on this episode — be the first.
+      </div>
+    );
+  }
 
   return (
-    <div className="border-t border-paper/20 bg-ink px-1 py-3">
-      <div className="flex items-center justify-between">
-        <p className="font-display text-xs tracking-widest text-paper/60">
-          {data ? `${data.count} ZAP${data.count === 1 ? "" : "S"}` : "LOADING…"}
-          {data?.totalSats ? ` · ${data.totalSats.toLocaleString()} SATS` : ""}
-        </p>
-        <ZapButton
-          recipientPubkey={recipientPubkey}
-          label={`Zap: ${episodeTitle}`}
-          episodeGuid={episodeGuid}
-          onZapped={refresh}
-          className="font-display text-xs tracking-widest text-jade hover:text-paper"
-        >
-          ⚡ ZAP THIS EPISODE
-        </ZapButton>
-      </div>
-
-      {!loading && data?.entries?.length > 0 && (
-        <div className="mt-2">
-          {data.entries.map((entry, i) => (
-            <CommentEntry key={i} entry={entry} />
-          ))}
-        </div>
-      )}
-
-      {!loading && data?.entries?.length === 0 && (
-        <p className="mt-3 font-serif text-xs italic text-paper/40">
-          No zaps yet on this episode &mdash; be the first.
-        </p>
-      )}
+    <div className="border-t border-paper/20 px-6 py-1">
+      {data.entries.map((entry, i) => (
+        <CommentEntry key={i} entry={entry} />
+      ))}
     </div>
   );
 }

@@ -204,6 +204,16 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
         ],
         content: "Paid via Lightning.",
       });
+
+      // Also tell our own backend directly — this is what actually
+      // updates club membership stats. Best-effort: if this fails, the
+      // order/receipt DM still went through.
+      fetch("/api/confirm-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: orderId }),
+      }).catch(() => {});
+
       setStatus("done");
     } catch (e) {
       setError(e.message || "Order was placed, but sending the receipt failed. You can still contact the seller with your order ID.");

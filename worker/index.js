@@ -431,6 +431,9 @@ async function handleFetch(request, env) {
   if (request.method === "POST" && url.pathname === "/api/pending-payment") {
     return handlePendingPayment(request, env);
   }
+  if (request.method === "POST" && url.pathname === "/api/confirm-payment") {
+    return handleConfirmPayment(request, env);
+  }
   if (request.method === "POST" && url.pathname === "/api/branta/verify") {
     return handleBrantaVerify(request, env);
   }
@@ -461,6 +464,46 @@ async function handleFetch(request, env) {
 // ---------------------------------------------------------------------
 
 /** Primary path: check every pending payment we registered ourselves. */
+/** Marks a pending payment confirmed and records it toward stats/episode totals. */
+async function confirmPayment(env, payment) {
+  payment.status = "confirmed";
+  await env.SOUND_COFFEE_KV.put(`pending:${payment.id}`, JSON.stringify(payment));
+
+  const sourceId = payment.type === "zap" ? `zap:${payment.id}` : `purchase:${payment.id}`;
+  await recordConfirmedPayment(env, {
+    pubkey: payment.pubkey,
+    type: payment.type,
+    amountSats: payment.amountSats,
+    sourceId,
+  });
+  if (payment.type === "zap" && payment.episodeGuid) {
+    await recordEpisodeZap(env, {
+      episodeGuid: payment.episodeGuid,
+      amountSats: payment.amountSats,
+      comment: payment.comment,
+      zapperPubkey: payment.pubkey,
+      sourceId,
+    });
+  }
+}
+
+async function handleConfirmPayment(request, env) {
+  const { id } = await request.json();
+  if (!id) return jsonResponse({ error: "Missing id." }, 422);
+
+  const raw = await env.SOUND_COFFEE_KV.get(`pending:${id}`);
+  if (!raw) return jsonResponse({ error: "No such pending payment." }, 404);
+
+  const payment = JSON.parse(raw);
+  if (payment.status === "pending") {
+    // Self-reported by the buyer, same trust level as the NIP-17 receipt
+    // DM already relies on — not cryptographic proof, but the honest
+    // fallback for providers that don't support automatic verification.
+    await confirmPayment(env, payment);
+  }
+  return jsonResponse({ ok: true });
+}
+
 async function pollPendingPayments(env) {
   const list = await env.SOUND_COFFEE_KV.list({ prefix: "pending:" });
 
@@ -474,28 +517,7 @@ async function pollPendingPayments(env) {
       const res = await fetch(payment.verifyUrl);
       const data = await res.json();
       if (data.settled) {
-        payment.status = "confirmed";
-        await env.SOUND_COFFEE_KV.put(key.name, JSON.stringify(payment));
-        // Use a namespaced-by-type source id so this can never collide
-        // with the relay-scan path below for a purchase, while matching
-        // it exactly for a zap (both derive from the same zap request id).
-        const sourceId =
-          payment.type === "zap" ? `zap:${payment.id}` : `purchase:${payment.id}`;
-        await recordConfirmedPayment(env, {
-          pubkey: payment.pubkey,
-          type: payment.type,
-          amountSats: payment.amountSats,
-          sourceId,
-        });
-        if (payment.type === "zap" && payment.episodeGuid) {
-          await recordEpisodeZap(env, {
-            episodeGuid: payment.episodeGuid,
-            amountSats: payment.amountSats,
-            comment: payment.comment,
-            zapperPubkey: payment.pubkey,
-            sourceId,
-          });
-        }
+        await confirmPayment(env, payment);
       }
     } catch {
       // provider unreachable this run — try again next run

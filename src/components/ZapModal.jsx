@@ -33,6 +33,7 @@ export default function ZapModal({
   const [qrDataUrl, setQrDataUrl] = useState(null);
   const [error, setError] = useState("");
   const [canAutoDetect, setCanAutoDetect] = useState(true);
+  const [zapId, setZapId] = useState(null);
   const pollRef = useRef(null);
 
   const effectiveAmount = customAmount ? Number(customAmount) : amount;
@@ -124,6 +125,7 @@ export default function ZapModal({
 
       setInvoice(pr);
       setQrDataUrl(qr);
+      setZapId(`${signed.id}`);
       setStatus("ready");
       startPolling(verify);
       onZapped?.();
@@ -131,6 +133,17 @@ export default function ZapModal({
       setError(e.message || "Something went wrong generating the invoice.");
       setStatus("error");
     }
+  }
+
+  async function handleManualConfirm() {
+    clearInterval(pollRef.current);
+    setStatus("paid");
+    onZapped?.();
+    fetch("/api/confirm-payment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: zapId }),
+    }).catch(() => {});
   }
 
   if (showLogin) {
@@ -235,7 +248,7 @@ export default function ZapModal({
               ) : (
                 <p className="font-serif text-xs italic text-ink/50">
                   This wallet doesn&rsquo;t support automatic confirmation
-                  &mdash; once you&rsquo;ve paid, you can just close this.
+                  &mdash; once you&rsquo;ve paid, tap the button below.
                 </p>
               )}
               <textarea
@@ -251,6 +264,14 @@ export default function ZapModal({
               >
                 COPY INVOICE
               </button>
+              {!canAutoDetect && (
+                <button
+                  onClick={handleManualConfirm}
+                  className="w-full border-2 border-ink bg-ink px-4 py-3 font-display text-sm tracking-widest text-paper hover:bg-jade hover:border-jade"
+                >
+                  I&rsquo;VE PAID
+                </button>
+              )}
             </div>
           )}
 

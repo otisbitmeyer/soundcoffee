@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
+import ZapButton from "./ZapButton";
 import EpisodeComments from "./EpisodeComments";
+import { useEpisodeZaps } from "@/hooks/useEpisodeZaps";
+import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
 function formatDate(dateString) {
   try {
@@ -19,6 +21,7 @@ function formatDate(dateString) {
 function EpisodeCard({ episode }) {
   const [playing, setPlaying] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
+  const { data, loading, refresh } = useEpisodeZaps(episode.guid);
 
   return (
     <div className="border-2 border-paper/30 transition hover:border-jade">
@@ -65,20 +68,34 @@ function EpisodeCard({ episode }) {
 
       {episode.guid && (
         <>
-          <button
-            onClick={() => setCommentsOpen((o) => !o)}
-            className="flex w-full items-center justify-between border-t border-paper/20 px-6 py-3 font-display text-xs tracking-widest text-paper/60 transition hover:text-jade"
-          >
-            <span>💬 ZAPS &amp; COMMENTS</span>
-            <span>{commentsOpen ? "▲" : "▼"}</span>
-          </button>
-          {commentsOpen && (
-            <EpisodeComments
-              episodeGuid={episode.guid}
-              recipientPubkey={SOUND_COFFEE_PUBKEY}
-              episodeTitle={episode.title}
-            />
-          )}
+          <div className="flex items-center justify-between border-t border-paper/20 px-6 py-3">
+            <div className="flex items-center gap-4">
+              <ZapButton
+                recipientPubkey={SOUND_COFFEE_PUBKEY}
+                label={`Zap: ${episode.title}`}
+                episodeGuid={episode.guid}
+                onZapped={refresh}
+                className="font-display text-xs tracking-widest text-jade transition hover:text-paper"
+              >
+                ⚡ ZAP
+              </ZapButton>
+              <button
+                onClick={() => setCommentsOpen((o) => !o)}
+                className="font-display text-xs tracking-widest text-paper/60 transition hover:text-jade"
+              >
+                ZAPS AND CONVERSATION {commentsOpen ? "▲" : "▼"}
+              </button>
+            </div>
+
+            {!loading && data && data.count > 0 && (
+              <span className="font-serif text-xs text-paper/40">
+                {data.count} zap{data.count === 1 ? "" : "s"} ·{" "}
+                {data.totalSats.toLocaleString()} sats
+              </span>
+            )}
+          </div>
+
+          {commentsOpen && <EpisodeComments data={data} loading={loading} />}
         </>
       )}
     </div>
