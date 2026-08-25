@@ -1,6 +1,7 @@
 "use client";
 
-import ZapButton from "./ZapButton";
+import { useState } from "react";
+import CheckoutModal from "./CheckoutModal";
 
 function formatPrice(price) {
   if (!price) return null;
@@ -13,6 +14,7 @@ function formatPrice(price) {
 }
 
 export default function ProductCard({ listing, sellerPubkey }) {
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
   const priceLabel = formatPrice(listing.price);
 
   return (
@@ -45,17 +47,22 @@ export default function ProductCard({ listing, sellerPubkey }) {
         )}
 
         <div className="mt-4 pt-2">
-          <ZapButton
-            recipientPubkey={sellerPubkey}
-            label={`Buy: ${listing.title}`}
-            eventId={listing.id}
-            aTag={listing.coordinate}
+          <button
+            onClick={() => setCheckoutOpen(true)}
             className="w-full border-2 border-ink bg-ink px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust"
           >
             ⚡ BUY WITH LIGHTNING
-          </ZapButton>
+          </button>
         </div>
       </div>
+
+      {checkoutOpen && (
+        <CheckoutModal
+          listing={listing}
+          sellerPubkey={sellerPubkey}
+          onClose={() => setCheckoutOpen(false)}
+        />
+      )}
     </div>
   );
 }

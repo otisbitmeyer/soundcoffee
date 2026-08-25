@@ -44,6 +44,20 @@ export function buildZapRequestTemplate({
 }
 
 /**
+ * Plain LNURL-pay invoice request — no Nostr zap request attached. Used
+ * for order checkout payments, as distinct from social "zaps".
+ */
+export async function requestPlainInvoice({ callback, amountMsats, comment }) {
+  const params = new URLSearchParams({ amount: String(amountMsats) });
+  if (comment) params.set("comment", comment);
+  const res = await fetch(`${callback}?${params.toString()}`);
+  const data = await res.json();
+  if (!data.pr) {
+    throw new Error(data.reason || "Couldn't generate an invoice.");
+  }
+  return data.pr;
+}
+/**
  * Takes a signed zap request event and requests the actual Lightning
  * invoice from the recipient's LNURL callback.
  */

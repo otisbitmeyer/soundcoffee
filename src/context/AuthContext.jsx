@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useCallback } from "react";
 import { generateSecretKey, getPublicKey, finalizeEvent } from "nostr-tools/pure";
 import { nsecEncode, npubEncode, decode } from "nostr-tools/nip19";
+import { getConversationKey, encrypt as nip44EncryptRaw } from "nostr-tools/nip44";
 
 const AuthContext = createContext(null);
 
@@ -88,6 +89,28 @@ export function AuthProvider({ children }) {
 
   const npub = pubkey ? npubEncode(pubkey) : null;
 
+  // NIP-44 encryption for the sender's own real identity — needed to
+  // "seal" a NIP-17 message so only the recipient can read it. Extension
+  // users encrypt via the extension (key never leaves it); local-key
+  // users encrypt with nostr-tools directly.
+  const nip44Encrypt = useCallback(
+    async (recipientPubkey, plaintext) => {
+      if (!pubkey) throw new Error("Not logged in.");
+      if (method === "extension") {
+        if (!window.nostr?.nip44?.encrypt) {
+          throw new Error(
+            "This extension doesn't support encrypted messages (NIP-44) yet. Try creating or importing a key instead."
+          );
+        }
+        return window.nostr.nip44.encrypt(recipientPubkey, plaintext);
+      }
+      if (!secretKey) throw new Error("No key available to encrypt with.");
+      const conversationKey = getConversationKey(secretKey, recipientPubkey);
+      return nip44EncryptRaw(plaintext, conversationKey);
+    },
+    [pubkey, method, secretKey]
+  );
+
   return (
     <AuthContext.Provider
       value={{
@@ -101,6 +124,7 @@ export function AuthProvider({ children }) {
         importKey,
         logout,
         signEvent,
+        nip44Encrypt,
       }}
     >
       {children}

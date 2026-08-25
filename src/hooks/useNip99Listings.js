@@ -23,6 +23,7 @@ function parseListing(event) {
   const dTag = getTag(event, "d") || event.id;
   const priceTag = event.tags.find((t) => t[0] === "price");
   const images = getAllTags(event, "image").map((t) => t[1]);
+  const typeTag = event.tags.find((t) => t[0] === "type");
 
   return {
     id: event.id,
@@ -38,6 +39,9 @@ function parseListing(event) {
     price: priceTag
       ? { amount: priceTag[1], currency: priceTag[2], frequency: priceTag[3] }
       : null,
+    // Gamma Markets NIP-99 e-commerce extension: ["type", "<simple|variable|variation>", "<digital|physical>"]
+    productType: typeTag?.[1] || "simple",
+    format: typeTag?.[2] || "digital",
     images,
     hashtags: getAllTags(event, "t").map((t) => t[1]),
     createdAt: event.created_at,
