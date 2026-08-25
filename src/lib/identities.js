@@ -11,3 +11,9 @@ export const SOUND_COFFEE_NPUB =
 
 export const SOUND_COFFEE_PUBKEY =
   "3e8220285e34b7dd2212b6eb62648c4e2cffdaab2f740daeeb50405e9883f45d";
+
+// The show's real Podcast Index GUID (<podcast:guid> in the RSS feed) —
+// the stable identifier the wider Podcasting 2.0 / Nostr ecosystem
+// (Fountain, BoostMeBitch, indexers like OnlyBoosts) uses to recognize
+// this show, independent of which host serves the feed.
+export const SOUND_COFFEE_SHOW_GUID = "de47e794-c0a3-4bb4-8712-cce1e4566b7e";

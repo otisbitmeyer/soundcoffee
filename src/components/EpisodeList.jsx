@@ -7,7 +7,7 @@ import EpisodeComments from "./EpisodeComments";
 import { useEpisodeZaps } from "@/hooks/useEpisodeZaps";
 import { useEpisodeNote } from "@/hooks/useEpisodeNote";
 import { useAuth } from "@/context/AuthContext";
-import { episodeExternalId } from "@/lib/episodeId";
+import { episodeTags } from "@/lib/episodeId";
 import { DEFAULT_RELAYS } from "@/lib/relays";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
@@ -44,7 +44,7 @@ function EpisodeCard({ episode }) {
       const template = {
         kind: 1,
         created_at: Math.floor(Date.now() / 1000),
-        tags: [["i", episodeExternalId(episode.guid)]],
+        tags: episodeTags(episode.guid),
         content: `🎙️ New episode: "${episode.title}"\n\n${episode.link}`,
       };
       const signed = await signEvent(template);

@@ -26,16 +26,16 @@ export function buildZapRequestTemplate({
   comment = "",
   eventId,
   aTag,
-  iTag,
+  extraTags = [],
 }) {
   const tags = [
     ["relays", ...relays],
     ["amount", String(amountMsats)],
     ["p", recipientPubkey],
+    ...extraTags,
   ];
   if (eventId) tags.push(["e", eventId]);
   if (aTag) tags.push(["a", aTag]);
-  if (iTag) tags.push(["i", iTag]);
 
   return {
     kind: 9734,

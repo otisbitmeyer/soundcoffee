@@ -2,12 +2,19 @@
 
 import { useState, useEffect, useRef } from "react";
 import QRCode from "qrcode";
+import { SimplePool } from "nostr-tools/pool";
 import { useAuth } from "@/context/AuthContext";
 import { useProfile } from "@/hooks/useProfile";
 import { resolveLud16, buildZapRequestTemplate, requestZapInvoice } from "@/lib/zap";
-import { episodeExternalId } from "@/lib/episodeId";
+import { episodeTags, showTags } from "@/lib/episodeId";
 import { DEFAULT_RELAYS } from "@/lib/relays";
 import LoginModal from "./LoginModal";
+
+let publishPool;
+function getPublishPool() {
+  if (!publishPool) publishPool = new SimplePool();
+  return publishPool;
+}
 
 const PRESET_AMOUNTS = [21, 100, 1000, 5000];
 const POLL_INTERVAL_MS = 3000;
@@ -34,6 +41,7 @@ export default function ZapModal({
   const [error, setError] = useState("");
   const [canAutoDetect, setCanAutoDetect] = useState(true);
   const [zapId, setZapId] = useState(null);
+  const zapDetailsRef = useRef(null); // { amountSats, comment, episodeGuid }
   const pollRef = useRef(null);
 
   const effectiveAmount = customAmount ? Number(customAmount) : amount;
@@ -41,6 +49,31 @@ export default function ZapModal({
   useEffect(() => {
     return () => clearInterval(pollRef.current);
   }, []);
+
+  // Publishes a real Nostr note, signed by the ZAPPER (not the show),
+  // announcing that they boosted — following the same convention Fountain
+  // and BoostMeBitch use. This is what makes a boost sent through our
+  // site visible on indexers like OnlyBoosts, and gives the person their
+  // own public record of it, same as boosting anywhere else on Nostr.
+  // Best-effort: only fires after payment is actually confirmed, never
+  // blocks the "paid" UI state if it fails.
+  async function publishBoostNote() {
+    const details = zapDetailsRef.current;
+    if (!details) return;
+    try {
+      const tags = details.episodeGuid ? episodeTags(details.episodeGuid) : showTags();
+      const template = {
+        kind: 1,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [...tags, ["amount", String(details.amountSats * 1000)], ["t", "boostagram"]],
+        content: details.comment || `⚡ Boosted ${details.amountSats.toLocaleString()} sats`,
+      };
+      const signed = await signEvent(template);
+      await Promise.any(getPublishPool().publish(DEFAULT_RELAYS, signed));
+    } catch {
+      // best-effort — not publishing this doesn't undo the real payment
+    }
+  }
 
   function startPolling(verifyUrl) {
     if (!verifyUrl) {
@@ -54,6 +87,7 @@ export default function ZapModal({
         if (data.settled) {
           clearInterval(pollRef.current);
           setStatus("paid");
+          publishBoostNote();
         }
       } catch {
         // network hiccup — just try again next tick
@@ -91,7 +125,7 @@ export default function ZapModal({
         comment,
         eventId,
         aTag,
-        iTag: episodeGuid ? episodeExternalId(episodeGuid) : undefined,
+        extraTags: episodeGuid ? episodeTags(episodeGuid) : showTags(),
       });
 
       const signed = await signEvent(template);
@@ -126,6 +160,7 @@ export default function ZapModal({
       setInvoice(pr);
       setQrDataUrl(qr);
       setZapId(`${signed.id}`);
+      zapDetailsRef.current = { amountSats: effectiveAmount, comment, episodeGuid };
       setStatus("ready");
       startPolling(verify);
       onZapped?.();
@@ -139,6 +174,7 @@ export default function ZapModal({
     clearInterval(pollRef.current);
     setStatus("paid");
     onZapped?.();
+    publishBoostNote();
     fetch("/api/confirm-payment", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

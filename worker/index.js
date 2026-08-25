@@ -29,6 +29,13 @@ const DEFAULT_RELAYS = [
 const SOUND_COFFEE_PUBKEY =
   "3e8220285e34b7dd2212b6eb62648c4e2cffdaab2f740daeeb50405e9883f45d";
 
+// The show's real Podcast Index GUID — see src/lib/identities.js for
+// where this comes from and why it matters for finding boosts sent
+// through the wider Podcasting 2.0 / Nostr ecosystem, not just our site.
+const SOUND_COFFEE_SHOW_GUID = "de47e794-c0a3-4bb4-8712-cce1e4566b7e";
+const SHOW_I_TAG = `podcast:guid:${SOUND_COFFEE_SHOW_GUID}`;
+const EPISODE_I_PREFIX = "podcast:item:guid:";
+
 const MIN_BOOST_SATS = 100;
 
 function jsonResponse(data, status = 200) {
@@ -562,9 +569,11 @@ async function pollZapReceiptsFromRelays(env) {
           sourceId: `zap:${zapRequest.id}`,
         });
 
-        const iTag = zapRequest.tags.find((t) => t[0] === "i");
-        if (iTag && iTag[1]?.startsWith("podcast:episode:")) {
-          const episodeGuid = iTag[1].slice("podcast:episode:".length);
+        const iTag = zapRequest.tags.find(
+          (t) => t[0] === "i" && t[1]?.startsWith(EPISODE_I_PREFIX)
+        );
+        if (iTag) {
+          const episodeGuid = iTag[1].slice(EPISODE_I_PREFIX.length);
           await recordEpisodeZap(env, {
             episodeGuid,
             amountSats,
@@ -582,9 +591,78 @@ async function pollZapReceiptsFromRelays(env) {
   }
 }
 
+/**
+ * Wider-ecosystem path: per NIP-73 (used by Fountain, BoostMeBitch, and
+ * indexers like OnlyBoosts), a "boost note" is a kind 1 event tagged
+ * with the show's real Podcast Index GUID plus a payment signal (an
+ * amount tag, a zap receipt reference, or a "boostagram" t-tag). This
+ * scans for those directly — from ANY npub, not just people who zapped
+ * through our own site — so a boost sent via Fountain or any other app
+ * that publishes to Nostr shows up here too, not only ones sent through
+ * our own zap button.
+ */
+async function pollEcosystemBoostNotes(env) {
+  const pool = new SimplePool();
+  try {
+    const notes = await pool.querySync(DEFAULT_RELAYS, {
+      kinds: [1],
+      "#i": [SHOW_I_TAG],
+      since: Math.floor(Date.now() / 1000) - 60 * 60 * 24,
+    });
+
+    for (const note of notes) {
+      try {
+        const amountTag = note.tags.find((t) => t[0] === "amount");
+        const hasBoostagramTag = note.tags.some(
+          (t) => t[0] === "t" && t[1]?.toLowerCase() === "boostagram"
+        );
+        // Require some evidence of payment, same rule OnlyBoosts uses —
+        // a bare show/episode reference with no payment signal isn't a
+        // boost, it's just a note that happens to mention the show.
+        if (!amountTag && !hasBoostagramTag) continue;
+
+        const amountSats = amountTag ? Math.floor(Number(amountTag[1]) / 1000) : 0;
+        if (amountSats <= 0 && !hasBoostagramTag) continue;
+
+        const episodeGuid = episodeGuidFromTags(note.tags);
+        const sourceId = `ecosystem:${note.id}`;
+
+        // Deliberately NOT calling recordConfirmedPayment here — a boost
+        // note from elsewhere on Nostr is, in OnlyBoosts' own words, "a
+        // claim, not a receipt": nothing cryptographically ties it to a
+        // real settled payment the way our own site's zap receipts and
+        // verified invoices are. Granting club membership off an
+        // unverifiable claim would be a real integrity gap (anyone could
+        // publish a fake note claiming a huge boost). This still updates
+        // the episode's public zap/comment feed, which is display-only
+        // and low-stakes either way.
+        if (episodeGuid && (amountSats > 0 || hasBoostagramTag)) {
+          await recordEpisodeZap(env, {
+            episodeGuid,
+            amountSats,
+            comment: note.content,
+            zapperPubkey: note.pubkey,
+            sourceId,
+          });
+        }
+      } catch {
+        // malformed note — skip it
+      }
+    }
+  } finally {
+    pool.close(DEFAULT_RELAYS);
+  }
+}
+
+function episodeGuidFromTags(tags) {
+  const iTag = tags.find((t) => t[0] === "i" && t[1]?.startsWith(EPISODE_I_PREFIX));
+  return iTag ? iTag[1].slice(EPISODE_I_PREFIX.length) : null;
+}
+
 async function handleScheduled(env) {
   await pollPendingPayments(env);
   await pollZapReceiptsFromRelays(env);
+  await pollEcosystemBoostNotes(env);
 }
 
 // ---------------------------------------------------------------------

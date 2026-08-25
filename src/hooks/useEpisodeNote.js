@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { SimplePool } from "nostr-tools/pool";
 import { DEFAULT_RELAYS } from "@/lib/relays";
-import { episodeExternalId } from "@/lib/episodeId";
+import { EPISODE_I_PREFIX } from "@/lib/episodeId";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
 let pool;
@@ -31,7 +31,7 @@ export function useEpisodeNote(episodeGuid) {
       .get(DEFAULT_RELAYS, {
         kinds: [1],
         authors: [SOUND_COFFEE_PUBKEY],
-        "#i": [episodeExternalId(episodeGuid)],
+        "#i": [`${EPISODE_I_PREFIX}${episodeGuid}`],
       })
       .then((event) => setNoteId(event?.id || null))
       .catch(() => setNoteId(null))

@@ -1,8 +1,31 @@
-// Podcast episodes come from RSS, not Nostr events, so there's no
-// natural event id to zap "to". Per NIP-73 (external content ids), we
-// tag episode zaps with an "i" tag using this stable convention, built
-// from the episode's RSS guid — that's what lets us later query "all
-// zaps for this exact episode" regardless of which show it's from.
-export function episodeExternalId(guid) {
-  return `podcast:episode:${guid}`;
+import { SOUND_COFFEE_SHOW_GUID } from "./identities";
+
+// Podcasting 2.0 / Nostr boost tagging, per NIP-73 (External Content
+// IDs) — the actual convention used across the ecosystem (Fountain,
+// BoostMeBitch, indexers like OnlyBoosts), not something invented for
+// this site. Each reference is a matched i/k tag pair. Using the real
+// convention means our boosts are visible to that wider tooling, and —
+// just as important — we can find *their* boosts to this show too,
+// instead of only ever seeing zaps sent through our own site.
+
+export function showTags(showGuid = SOUND_COFFEE_SHOW_GUID) {
+  return [
+    ["i", `podcast:guid:${showGuid}`],
+    ["k", "podcast:guid"],
+  ];
+}
+
+export function episodeTags(episodeGuid, showGuid = SOUND_COFFEE_SHOW_GUID) {
+  return [
+    ...showTags(showGuid),
+    ["i", `podcast:item:guid:${episodeGuid}`],
+    ["k", "podcast:item:guid"],
+  ];
+}
+
+export const EPISODE_I_PREFIX = "podcast:item:guid:";
+
+export function episodeGuidFromTags(tags) {
+  const iTag = tags.find((t) => t[0] === "i" && t[1]?.startsWith(EPISODE_I_PREFIX));
+  return iTag ? iTag[1].slice(EPISODE_I_PREFIX.length) : null;
 }
