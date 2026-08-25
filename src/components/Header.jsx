@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { useProfile } from "@/hooks/useProfile";
+import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 import LoginModal from "./LoginModal";
 
 function shortNpub(npub) {
@@ -16,8 +17,21 @@ export default function Header() {
   const { isLoggedIn, pubkey, npub, logout, restoring } = useAuth();
   const { profile } = useProfile(pubkey);
   const [modalOpen, setModalOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
 
   const displayName = profile?.display_name || profile?.name || shortNpub(npub);
+  const isSoundCoffeeAccount = pubkey === SOUND_COFFEE_PUBKEY;
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   return (
     <>
@@ -43,9 +57,9 @@ export default function Header() {
           {restoring ? (
             <div className="h-9 w-24" />
           ) : isLoggedIn ? (
-            <div className="flex items-center gap-3">
-              <Link
-                href="/dashboard"
+            <div ref={menuRef} className="relative">
+              <button
+                onClick={() => setMenuOpen((o) => !o)}
                 className="flex items-center gap-2 border-2 border-ink px-3 py-2 font-display text-sm tracking-widest text-ink transition hover:border-jade hover:text-jade"
               >
                 {profile?.picture ? (
@@ -56,14 +70,47 @@ export default function Header() {
                   />
                 ) : null}
                 {displayName}
-              </Link>
-              <button
-                onClick={logout}
-                title="Log out"
-                className="font-display text-xs tracking-widest text-ink/50 hover:text-rust"
-              >
-                LOG OUT
+                <span className="text-xs">{menuOpen ? "▲" : "▼"}</span>
               </button>
+
+              {menuOpen && (
+                <div className="absolute right-0 mt-2 w-48 border-2 border-ink bg-paper font-display text-sm tracking-widest shadow-lg">
+                  <Link
+                    href="/dashboard"
+                    onClick={() => setMenuOpen(false)}
+                    className="block px-4 py-3 text-ink hover:bg-ink hover:text-paper"
+                  >
+                    DASHBOARD
+                  </Link>
+                  {isSoundCoffeeAccount && (
+                    <>
+                      <Link
+                        href="/sell"
+                        onClick={() => setMenuOpen(false)}
+                        className="block border-t border-ink/10 px-4 py-3 text-ink hover:bg-ink hover:text-paper"
+                      >
+                        NEW LISTING
+                      </Link>
+                      <Link
+                        href="/admin"
+                        onClick={() => setMenuOpen(false)}
+                        className="block border-t border-ink/10 px-4 py-3 text-ink hover:bg-ink hover:text-paper"
+                      >
+                        CLUB ADMIN
+                      </Link>
+                    </>
+                  )}
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      logout();
+                    }}
+                    className="block w-full border-t border-ink/10 px-4 py-3 text-left text-rust hover:bg-rust hover:text-paper"
+                  >
+                    LOG OUT
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <button

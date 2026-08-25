@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import QRCode from "qrcode";
 import { useAuth } from "@/context/AuthContext";
 import { useProfile } from "@/hooks/useProfile";
@@ -9,6 +9,7 @@ import { DEFAULT_RELAYS } from "@/lib/relays";
 import LoginModal from "./LoginModal";
 
 const PRESET_AMOUNTS = [21, 100, 1000, 5000];
+const POLL_INTERVAL_MS = 3000;
 
 export default function ZapModal({
   recipientPubkey,
@@ -24,12 +25,37 @@ export default function ZapModal({
   const [amount, setAmount] = useState(100);
   const [customAmount, setCustomAmount] = useState("");
   const [comment, setComment] = useState("");
-  const [status, setStatus] = useState("idle"); // idle | working | ready | error
+  const [status, setStatus] = useState("idle"); // idle | working | ready | paid | error
   const [invoice, setInvoice] = useState(null);
   const [qrDataUrl, setQrDataUrl] = useState(null);
   const [error, setError] = useState("");
+  const [canAutoDetect, setCanAutoDetect] = useState(true);
+  const pollRef = useRef(null);
 
   const effectiveAmount = customAmount ? Number(customAmount) : amount;
+
+  useEffect(() => {
+    return () => clearInterval(pollRef.current);
+  }, []);
+
+  function startPolling(verifyUrl) {
+    if (!verifyUrl) {
+      setCanAutoDetect(false);
+      return;
+    }
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(verifyUrl);
+        const data = await res.json();
+        if (data.settled) {
+          clearInterval(pollRef.current);
+          setStatus("paid");
+        }
+      } catch {
+        // network hiccup — just try again next tick
+      }
+    }, POLL_INTERVAL_MS);
+  }
 
   async function handleZap() {
     if (!isLoggedIn) {
@@ -93,6 +119,7 @@ export default function ZapModal({
       setInvoice(pr);
       setQrDataUrl(qr);
       setStatus("ready");
+      startPolling(verify);
     } catch (e) {
       setError(e.message || "Something went wrong generating the invoice.");
       setStatus("error");
@@ -108,7 +135,7 @@ export default function ZapModal({
       <div className="w-full max-w-md border-2 border-ink bg-paper">
         <div className="flex items-center justify-between border-b-2 border-ink px-6 py-4">
           <h2 className="font-display text-xl tracking-wide text-ink">
-            {label.toUpperCase()}
+            {status === "paid" ? "ZAP RECEIVED" : label.toUpperCase()}
           </h2>
           <button
             onClick={onClose}
@@ -120,7 +147,7 @@ export default function ZapModal({
         </div>
 
         <div className="px-6 py-6">
-          {status !== "ready" && (
+          {(status === "idle" || status === "working" || status === "error") && (
             <div className="space-y-4 font-serif text-sm text-ink/80">
               <div>
                 <label className="block font-display text-xs tracking-widest text-ink/60">
@@ -193,6 +220,17 @@ export default function ZapModal({
               <p className="font-serif text-sm text-ink/70">
                 Scan with any Lightning wallet, or copy the invoice below.
               </p>
+              {canAutoDetect ? (
+                <p className="flex items-center justify-center gap-2 font-serif text-xs italic text-ink/50">
+                  <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-jade" />
+                  Watching for payment&hellip; this updates automatically.
+                </p>
+              ) : (
+                <p className="font-serif text-xs italic text-ink/50">
+                  This wallet doesn&rsquo;t support automatic confirmation
+                  &mdash; once you&rsquo;ve paid, you can just close this.
+                </p>
+              )}
               <textarea
                 readOnly
                 value={invoice}
@@ -205,6 +243,22 @@ export default function ZapModal({
                 className="w-full border-2 border-ink px-4 py-2 font-display text-sm tracking-widest text-ink hover:border-jade hover:text-jade"
               >
                 COPY INVOICE
+              </button>
+            </div>
+          )}
+
+          {status === "paid" && (
+            <div className="space-y-3 text-center font-serif text-ink/80">
+              <p className="text-4xl">⚡✓</p>
+              <p className="font-display text-xl text-jade">
+                PAYMENT RECEIVED
+              </p>
+              <p>Thanks for the boost!</p>
+              <button
+                onClick={onClose}
+                className="mt-2 w-full border-2 border-ink px-4 py-2 font-display text-sm tracking-widest text-ink hover:border-jade hover:text-jade"
+              >
+                CLOSE
               </button>
             </div>
           )}

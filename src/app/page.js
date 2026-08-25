@@ -50,9 +50,13 @@ export default function Home() {
             <h2 className="font-display text-4xl tracking-wide text-ink sm:text-5xl">
               THE COFFEE CLUB
             </h2>
-            <p className="mx-auto mt-4 max-w-2xl font-serif text-lg text-ink/80">
-              Two ways in. Both get you the same membership.
-            </p>
+            <Image
+              src="/club-graphic.png"
+              alt="Two doors, one membership."
+              width={2172}
+              height={724}
+              className="mx-auto mt-4 h-auto w-full max-w-md"
+            />
 
             <div className="mt-12 grid gap-8 sm:grid-cols-2">
               <div className="flex flex-col items-center border-2 border-ink p-8 text-center">
