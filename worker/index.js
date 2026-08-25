@@ -172,6 +172,130 @@ async function handleClubMembers(env) {
   return jsonResponse({ members, allStats: all });
 }
 
+/**
+ * One-time (but safe to re-run anytime) full recompute of every pubkey's
+ * stats from primary sources, properly deduplicated. Fixes historical
+ * double-counting caused by an earlier bug where a zap discovered via
+ * both the pending-payment path and the relay-receipt path was counted
+ * twice (they used different, uncorrelated source ids). This rebuilds
+ * everything from scratch using the corrected, unified id scheme, so old
+ * bad data can't linger.
+ */
+async function handleRecomputeStats(env) {
+  const zapTotals = new Map(); // sourceId -> { pubkey, amountSats }
+  const purchaseTotals = new Map(); // sourceId -> { pubkey, amountSats }
+
+  // Source 1: every confirmed payment we registered ourselves (both
+  // zaps sent through our site, and purchases).
+  const pendingList = await env.SOUND_COFFEE_KV.list({ prefix: "pending:" });
+  for (const key of pendingList.keys) {
+    const raw = await env.SOUND_COFFEE_KV.get(key.name);
+    if (!raw) continue;
+    const payment = JSON.parse(raw);
+    if (payment.status !== "confirmed") continue;
+    const map = payment.type === "zap" ? zapTotals : purchaseTotals;
+    map.set(payment.id, { pubkey: payment.pubkey, amountSats: payment.amountSats });
+  }
+
+  // Source 2: zap receipts found directly on relays (catches boosts sent
+  // through other Nostr clients, not just our site). No time window here
+  // — this is a full historical recompute, not the usual incremental
+  // check.
+  const pool = new SimplePool();
+  try {
+    const receipts = await pool.querySync(DEFAULT_RELAYS, {
+      kinds: [9735],
+      "#p": [SOUND_COFFEE_PUBKEY],
+    });
+    for (const receipt of receipts) {
+      try {
+        const descriptionTag = receipt.tags.find((t) => t[0] === "description");
+        if (!descriptionTag) continue;
+        const zapRequest = JSON.parse(descriptionTag[1]);
+        const amountTag = zapRequest.tags.find((t) => t[0] === "amount");
+        if (!amountTag) continue;
+        const amountSats = Math.floor(Number(amountTag[1]) / 1000);
+        // Map keyed by the zap REQUEST's id, same as source 1 — this is
+        // exactly what makes the dedup work: if this same zap also shows
+        // up in source 1, .set() on the same key just overwrites with
+        // (identical) data instead of creating a second entry.
+        zapTotals.set(zapRequest.id, { pubkey: zapRequest.pubkey, amountSats });
+      } catch {
+        // malformed receipt — skip it
+      }
+    }
+  } finally {
+    pool.close(DEFAULT_RELAYS);
+  }
+
+  // Aggregate per pubkey.
+  const byPubkey = new Map();
+  function getEntry(pubkey) {
+    if (!byPubkey.has(pubkey)) {
+      byPubkey.set(pubkey, {
+        pubkey,
+        totalZapSats: 0,
+        zapCount: 0,
+        totalPurchaseSats: 0,
+        purchaseCount: 0,
+      });
+    }
+    return byPubkey.get(pubkey);
+  }
+  for (const { pubkey, amountSats } of zapTotals.values()) {
+    const e = getEntry(pubkey);
+    e.totalZapSats += amountSats;
+    e.zapCount += 1;
+  }
+  for (const { pubkey, amountSats } of purchaseTotals.values()) {
+    const e = getEntry(pubkey);
+    e.totalPurchaseSats += amountSats;
+    e.purchaseCount += 1;
+  }
+
+  // Write back, preserving each pubkey's original memberSince if they
+  // were already a member (so this doesn't reset their "member since"
+  // date), only assigning a new one if they're newly qualifying.
+  const now = Date.now();
+  const results = [];
+  for (const entry of byPubkey.values()) {
+    const existingRaw = await env.SOUND_COFFEE_KV.get(`stats:${entry.pubkey}`);
+    const existing = existingRaw ? JSON.parse(existingRaw) : null;
+    const qualifies = entry.totalZapSats >= MIN_BOOST_SATS || entry.purchaseCount > 0;
+
+    const stats = {
+      ...entry,
+      isMember: qualifies,
+      memberSince: qualifies ? existing?.memberSince || now : null,
+      firstSeenAt: existing?.firstSeenAt || now,
+      lastActivityAt: existing?.lastActivityAt || now,
+    };
+    await env.SOUND_COFFEE_KV.put(`stats:${entry.pubkey}`, JSON.stringify(stats));
+    results.push(stats);
+  }
+
+  // Mark every source id as "seen" under the new scheme, so the regular
+  // incremental cron doesn't immediately try to re-add any of these.
+  for (const id of zapTotals.keys()) {
+    await env.SOUND_COFFEE_KV.put(`seen:zap:${id}`, "1", {
+      expirationTtl: 60 * 60 * 24 * 90,
+    });
+  }
+  for (const id of purchaseTotals.keys()) {
+    await env.SOUND_COFFEE_KV.put(`seen:purchase:${id}`, "1", {
+      expirationTtl: 60 * 60 * 24 * 90,
+    });
+  }
+
+  return jsonResponse({
+    ok: true,
+    pubkeysRecomputed: results.length,
+    uniqueZapsFound: zapTotals.size,
+    uniquePurchasesFound: purchaseTotals.size,
+    results,
+  });
+}
+
 async function handleFetch(request, env) {
   const url = new URL(request.url);
 
@@ -186,6 +310,9 @@ async function handleFetch(request, env) {
   }
   if (request.method === "GET" && url.pathname === "/api/club-members") {
     return handleClubMembers(env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/admin/recompute-stats") {
+    return handleRecomputeStats(env);
   }
 
   return new Response("Not found", { status: 404 });
@@ -211,11 +338,16 @@ async function pollPendingPayments(env) {
       if (data.settled) {
         payment.status = "confirmed";
         await env.SOUND_COFFEE_KV.put(key.name, JSON.stringify(payment));
+        // Use a namespaced-by-type source id so this can never collide
+        // with the relay-scan path below for a purchase, while matching
+        // it exactly for a zap (both derive from the same zap request id).
+        const sourceId =
+          payment.type === "zap" ? `zap:${payment.id}` : `purchase:${payment.id}`;
         await recordConfirmedPayment(env, {
           pubkey: payment.pubkey,
           type: payment.type,
           amountSats: payment.amountSats,
-          sourceId: `pending:${payment.id}`,
+          sourceId,
         });
       }
     } catch {
@@ -248,11 +380,17 @@ async function pollZapReceiptsFromRelays(env) {
         if (!amountTag) continue;
         const amountSats = Math.floor(Number(amountTag[1]) / 1000);
 
+        // Use the ORIGINAL zap request's id, not the receipt's own id.
+        // A zap sent through our site is registered under this same id
+        // via pollPendingPayments — using it here too means both paths
+        // agree it's the same zap and the idempotency check in
+        // recordConfirmedPayment actually catches the overlap, instead
+        // of double-counting it as two different payments.
         await recordConfirmedPayment(env, {
           pubkey: zapRequest.pubkey,
           type: "zap",
           amountSats,
-          sourceId: `receipt:${receipt.id}`,
+          sourceId: `zap:${zapRequest.id}`,
         });
       } catch {
         // malformed receipt — skip it

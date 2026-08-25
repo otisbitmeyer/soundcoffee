@@ -62,16 +62,37 @@ export default function AdminPage() {
   const [showLogin, setShowLogin] = useState(false);
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
+  const [recomputing, setRecomputing] = useState(false);
+  const [recomputeResult, setRecomputeResult] = useState(null);
 
   const isRightAccount = pubkey === SOUND_COFFEE_PUBKEY;
 
-  useEffect(() => {
-    if (!isRightAccount) return;
+  function loadData() {
     fetch("/api/club-members")
       .then((res) => res.json())
       .then(setData)
       .catch(() => setError(true));
+  }
+
+  useEffect(() => {
+    if (!isRightAccount) return;
+    loadData();
   }, [isRightAccount]);
+
+  async function handleRecompute() {
+    setRecomputing(true);
+    setRecomputeResult(null);
+    try {
+      const res = await fetch("/api/admin/recompute-stats", { method: "POST" });
+      const result = await res.json();
+      setRecomputeResult(result);
+      loadData();
+    } catch {
+      setRecomputeResult({ ok: false });
+    } finally {
+      setRecomputing(false);
+    }
+  }
 
   const sortedStats = data?.allStats
     ?.slice()
@@ -115,14 +136,35 @@ export default function AdminPage() {
 
           {isRightAccount && data && (
             <div className="mt-10">
-              <p className="font-serif text-ink/70">
-                <span className="font-display text-2xl text-jade">
-                  {data.members.length}
-                </span>{" "}
-                club member{data.members.length === 1 ? "" : "s"} out of{" "}
-                {data.allStats.length} tracked pubkey
-                {data.allStats.length === 1 ? "" : "s"}.
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <p className="font-serif text-ink/70">
+                  <span className="font-display text-2xl text-jade">
+                    {data.members.length}
+                  </span>{" "}
+                  club member{data.members.length === 1 ? "" : "s"} out of{" "}
+                  {data.allStats.length} tracked pubkey
+                  {data.allStats.length === 1 ? "" : "s"}.
+                </p>
+                <button
+                  onClick={handleRecompute}
+                  disabled={recomputing}
+                  className="border-2 border-ink px-4 py-2 font-display text-xs tracking-widest text-ink hover:border-jade hover:text-jade disabled:opacity-50"
+                >
+                  {recomputing ? "RECOMPUTING…" : "RECOMPUTE ALL STATS"}
+                </button>
+              </div>
+
+              {recomputeResult && (
+                <p
+                  className={`mt-3 text-sm font-serif ${
+                    recomputeResult.ok ? "text-jade" : "text-rust"
+                  }`}
+                >
+                  {recomputeResult.ok
+                    ? `Done — rebuilt stats for ${recomputeResult.pubkeysRecomputed} pubkeys from ${recomputeResult.uniqueZapsFound} unique zaps and ${recomputeResult.uniquePurchasesFound} unique purchases.`
+                    : "Something went wrong recomputing stats."}
+                </p>
+              )}
 
               <div className="mt-6 overflow-x-auto">
                 <table className="w-full border-collapse text-left font-serif text-sm">
