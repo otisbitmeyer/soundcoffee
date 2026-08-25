@@ -34,9 +34,9 @@ export default function Header() {
           </a>
 
           <nav className="hidden items-center gap-8 font-display text-sm tracking-widest text-ink sm:flex">
-            <a href="#shop" className="hover:text-rust">SHOP</a>
-            <a href="#listen" className="hover:text-rust">LISTEN</a>
-            <a href="#club" className="hover:text-rust">THE CLUB</a>
+            <a href="/#shop" className="hover:text-rust">SHOP</a>
+            <a href="/listening-lair" className="hover:text-rust">LISTEN</a>
+            <a href="/#club" className="hover:text-rust">THE CLUB</a>
           </nav>
 
           {isLoggedIn ? (

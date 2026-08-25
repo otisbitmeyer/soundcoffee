@@ -9,25 +9,23 @@ export default function Home() {
 
       <main className="flex-1">
         {/* ---------- HERO ---------- */}
-        <section className="border-b-4 border-ink bg-ink text-paper">
-          <div className="mx-auto max-w-2xl px-6 py-24 text-center sm:py-32">
-            <div className="space-y-4 font-serif text-lg text-paper/85 sm:text-xl">
-              <p>
-                Greetings, friend. I&rsquo;m glad you&rsquo;re here. Pull up a
-                chair. The coffee is fresh. The conversation is evolving.
-              </p>
-              <p>
-                If you like what you taste (or hear), join us. SOUND COFFEE
-                is still being built. Let&rsquo;s make some magic.
-              </p>
-            </div>
+        <section className="flex min-h-[90vh] items-center border-b-4 border-ink bg-ink text-paper">
+          <div className="mx-auto max-w-2xl px-6 py-16 text-center">
+            <Image
+              src="/hero-greeting.png"
+              alt="Greetings, friend. I'm glad you're here. Pull up a chair. The coffee is fresh. The conversation is evolving. If you like what you taste (or hear), join us. SOUND COFFEE is still being built. Let's make some magic."
+              width={1899}
+              height={828}
+              className="mx-auto w-full max-w-xl"
+              priority
+            />
 
             <Image
               src="/signature.png"
               alt="Otis Bitmeyer"
               width={1774}
               height={887}
-              className="mx-auto mt-8 h-auto w-48 sm:w-60"
+              className="mx-auto mt-6 h-auto w-32 sm:w-40"
             />
 
             <div className="mt-10">
