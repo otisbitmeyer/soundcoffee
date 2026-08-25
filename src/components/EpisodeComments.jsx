@@ -68,7 +68,7 @@ export default function EpisodeComments({ data, loading }) {
   }
 
   return (
-    <div className="border-t border-paper/20 px-6 py-1">
+    <div className="border-t border-paper/20 px-6 py-3">
       {data.entries.map((entry, i) => (
         <CommentEntry key={i} entry={entry} />
       ))}
