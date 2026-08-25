@@ -31,7 +31,12 @@ export function useEpisodeNote(episodeGuid) {
       .get(DEFAULT_RELAYS, {
         kinds: [1],
         authors: [SOUND_COFFEE_PUBKEY],
-        "#i": [`${EPISODE_I_PREFIX}${episodeGuid}`],
+        // Matches either tag format — the current NIP-73-correct one,
+        // and the legacy one this site used before that fix. Without
+        // both, a note published under the old format would look like
+        // it doesn't exist, and the publish button would wrongly show
+        // up again for an episode that already has one.
+        "#i": [`${EPISODE_I_PREFIX}${episodeGuid}`, `podcast:episode:${episodeGuid}`],
       })
       .then((event) => setNoteId(event?.id || null))
       .catch(() => setNoteId(null))
