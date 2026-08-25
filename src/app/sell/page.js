@@ -10,12 +10,17 @@ import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
 function slugify(text) {
   return (
-    text
+    (text || "")
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "") || "listing"
+      .replace(/(^-|-$)/g, "") || "x"
   );
+}
+
+let nextRowId = 1;
+function newVariationRow() {
+  return { id: nextRowId++, size: "", color: "", price: "", stock: "" };
 }
 
 export default function SellPage() {
@@ -30,9 +35,15 @@ export default function SellPage() {
   const [images, setImages] = useState("");
   const [format, setFormat] = useState("physical");
 
+  // Variations (e.g. t-shirt sizes/colors) — Gamma spec's variable/
+  // variation product type. Off by default; a single simple listing
+  // covers most products (like coffee bags).
+  const [hasVariations, setHasVariations] = useState(false);
+  const [variations, setVariations] = useState([newVariationRow(), newVariationRow()]);
+
   // Shipping (Gamma Markets extension to NIP-99, kind 30406). Optional —
-  // only published if a shipping price is given. One option per listing
-  // for now; the spec allows multiple, this keeps the form simple.
+  // only published if a shipping price is given. One option, shared
+  // across all variations of a product.
   const [shipPrice, setShipPrice] = useState("");
   const [shipCurrency, setShipCurrency] = useState("USD");
   const [shipCountry, setShipCountry] = useState("US");
@@ -43,6 +54,20 @@ export default function SellPage() {
   const [publishedEventId, setPublishedEventId] = useState(null);
 
   const isRightAccount = pubkey === SOUND_COFFEE_PUBKEY;
+
+  function updateVariation(id, field, value) {
+    setVariations((rows) =>
+      rows.map((r) => (r.id === id ? { ...r, [field]: value } : r))
+    );
+  }
+
+  function addVariationRow() {
+    setVariations((rows) => [...rows, newVariationRow()]);
+  }
+
+  function removeVariationRow(id) {
+    setVariations((rows) => rows.filter((r) => r.id !== id));
+  }
 
   async function handlePublish() {
     if (!isLoggedIn) {
@@ -56,8 +81,23 @@ export default function SellPage() {
       setStatus("error");
       return;
     }
-    if (!title.trim() || !priceAmount) {
-      setError("Title and price are required.");
+    if (!title.trim()) {
+      setError("Title is required.");
+      setStatus("error");
+      return;
+    }
+
+    const validVariations = hasVariations
+      ? variations.filter((v) => v.price && (v.size.trim() || v.color.trim()))
+      : [];
+
+    if (hasVariations && validVariations.length === 0) {
+      setError("Add at least one variation with a size/color and a price.");
+      setStatus("error");
+      return;
+    }
+    if (!hasVariations && !priceAmount) {
+      setError("Price is required.");
       setStatus("error");
       return;
     }
@@ -71,22 +111,11 @@ export default function SellPage() {
         .split("\n")
         .map((s) => s.trim())
         .filter(Boolean);
-
-      const tags = [
-        ["d", dTag],
-        ["title", title.trim()],
-        ["published_at", String(Math.floor(Date.now() / 1000))],
-        ["price", priceAmount, priceCurrency],
-        ["status", "active"],
-        ["type", "simple", format],
-      ];
-      if (summary.trim()) tags.push(["summary", summary.trim()]);
-      for (const url of imageUrls) tags.push(["image", url]);
-
       const pool = new SimplePool();
 
-      // Publish the shipping option first (if provided), so we can
-      // reference its coordinate from the listing itself.
+      // Shipping option — published once, referenced by the parent and
+      // (if applicable) every variation.
+      let shippingTag = null;
       if (format === "physical" && shipPrice) {
         const shipDTag = `${dTag}-shipping`;
         const shipTemplate = {
@@ -103,20 +132,83 @@ export default function SellPage() {
         };
         const signedShip = await signEvent(shipTemplate);
         await Promise.any(pool.publish(DEFAULT_RELAYS, signedShip));
-        tags.push(["shipping_option", `30406:${pubkey}:${shipDTag}`]);
+        shippingTag = ["shipping_option", `30406:${pubkey}:${shipDTag}`];
       }
 
-      const template = {
-        kind: 30402,
-        created_at: Math.floor(Date.now() / 1000),
-        tags,
-        content: description.trim(),
-      };
+      const baseTags = [
+        ["published_at", String(Math.floor(Date.now() / 1000))],
+        ["status", "active"],
+      ];
+      if (summary.trim()) baseTags.push(["summary", summary.trim()]);
+      for (const url of imageUrls) baseTags.push(["image", url]);
+      if (shippingTag) baseTags.push(shippingTag);
 
-      const signed = await signEvent(template);
-      await Promise.any(pool.publish(DEFAULT_RELAYS, signed));
+      if (hasVariations) {
+        // Parent "variable" listing — price shown is the lowest of its
+        // variations, a common "starting at" convention, since the spec
+        // still requires a price tag even on the parent.
+        const lowest = Math.min(...validVariations.map((v) => Number(v.price)));
+        const parentCoordinate = `30402:${pubkey}:${dTag}`;
 
-      setPublishedEventId(signed.id);
+        const parentTemplate = {
+          kind: 30402,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: [
+            ["d", dTag],
+            ["title", title.trim()],
+            ["price", String(lowest), priceCurrency],
+            ["type", "variable", format],
+            ...baseTags,
+          ],
+          content: description.trim(),
+        };
+        const signedParent = await signEvent(parentTemplate);
+        await Promise.any(pool.publish(DEFAULT_RELAYS, signedParent));
+
+        for (const v of validVariations) {
+          const variantDTag = `${dTag}-${slugify(v.size)}-${slugify(v.color)}`;
+          const label = [v.size.trim(), v.color.trim()].filter(Boolean).join(" / ");
+          const tags = [
+            ["d", variantDTag],
+            ["title", `${title.trim()} — ${label}`],
+            ["price", v.price, priceCurrency],
+            ["type", "variation", format],
+            ["a", parentCoordinate],
+            ...baseTags,
+          ];
+          if (v.size.trim()) tags.push(["spec", "size", v.size.trim()]);
+          if (v.color.trim()) tags.push(["spec", "color", v.color.trim()]);
+          if (v.stock) tags.push(["stock", v.stock]);
+
+          const variantTemplate = {
+            kind: 30402,
+            created_at: Math.floor(Date.now() / 1000),
+            tags,
+            content: description.trim(),
+          };
+          const signedVariant = await signEvent(variantTemplate);
+          await Promise.any(pool.publish(DEFAULT_RELAYS, signedVariant));
+        }
+
+        setPublishedEventId(signedParent.id);
+      } else {
+        const template = {
+          kind: 30402,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: [
+            ["d", dTag],
+            ["title", title.trim()],
+            ["price", priceAmount, priceCurrency],
+            ["type", "simple", format],
+            ...baseTags,
+          ],
+          content: description.trim(),
+        };
+        const signed = await signEvent(template);
+        await Promise.any(pool.publish(DEFAULT_RELAYS, signed));
+        setPublishedEventId(signed.id);
+      }
+
       setStatus("done");
     } catch (e) {
       setError(e.message || "Something went wrong publishing this listing.");
@@ -131,6 +223,8 @@ export default function SellPage() {
     setPriceAmount("");
     setImages("");
     setShipPrice("");
+    setHasVariations(false);
+    setVariations([newVariationRow(), newVariationRow()]);
     setStatus("form");
     setPublishedEventId(null);
   }
@@ -181,7 +275,7 @@ export default function SellPage() {
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   className="mt-1 w-full border-2 border-ink/30 px-3 py-2 focus:border-ink focus:outline-none"
-                  placeholder="Ethiopia Yirgacheffe, 12oz"
+                  placeholder="Ethiopia Yirgacheffe, 12oz  or  Sound Coffee T-Shirt"
                 />
               </div>
 
@@ -209,37 +303,118 @@ export default function SellPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block font-display text-xs tracking-widest text-ink/60">
-                    PRICE
-                  </label>
-                  <input
-                    type="number"
-                    value={priceAmount}
-                    onChange={(e) => setPriceAmount(e.target.value)}
-                    className="mt-1 w-full border-2 border-ink/30 px-3 py-2 focus:border-ink focus:outline-none"
-                    placeholder="18"
-                  />
+              <label className="flex items-center gap-2 border-2 border-ink/20 p-3 text-ink">
+                <input
+                  type="checkbox"
+                  checked={hasVariations}
+                  onChange={(e) => setHasVariations(e.target.checked)}
+                />
+                This product comes in different sizes/colors (e.g. a t-shirt)
+              </label>
+
+              {!hasVariations && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-display text-xs tracking-widest text-ink/60">
+                      PRICE
+                    </label>
+                    <input
+                      type="number"
+                      value={priceAmount}
+                      onChange={(e) => setPriceAmount(e.target.value)}
+                      className="mt-1 w-full border-2 border-ink/30 px-3 py-2 focus:border-ink focus:outline-none"
+                      placeholder="18"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-display text-xs tracking-widest text-ink/60">
+                      CURRENCY
+                    </label>
+                    <select
+                      value={priceCurrency}
+                      onChange={(e) => setPriceCurrency(e.target.value)}
+                      className="mt-1 w-full border-2 border-ink/30 px-3 py-2 focus:border-ink focus:outline-none"
+                    >
+                      <option value="sats">sats</option>
+                      <option value="USD">USD</option>
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="block font-display text-xs tracking-widest text-ink/60">
-                    CURRENCY
-                  </label>
-                  <select
-                    value={priceCurrency}
-                    onChange={(e) => setPriceCurrency(e.target.value)}
-                    className="mt-1 w-full border-2 border-ink/30 px-3 py-2 focus:border-ink focus:outline-none"
+              )}
+
+              {hasVariations && (
+                <div className="border-2 border-ink/20 p-4">
+                  <div className="flex items-center justify-between">
+                    <label className="block font-display text-xs tracking-widest text-ink/60">
+                      VARIATIONS
+                    </label>
+                    <select
+                      value={priceCurrency}
+                      onChange={(e) => setPriceCurrency(e.target.value)}
+                      className="border-2 border-ink/30 px-2 py-1 font-display text-xs focus:border-ink focus:outline-none"
+                    >
+                      <option value="sats">sats</option>
+                      <option value="USD">USD</option>
+                    </select>
+                  </div>
+                  <p className="mt-1 mb-3 text-xs italic text-ink/50">
+                    One row per size/color combo you actually sell. Leave
+                    either field blank if it doesn&rsquo;t apply (e.g. only
+                    sizes, no colors).
+                  </p>
+
+                  <div className="space-y-2">
+                    {variations.map((v) => (
+                      <div key={v.id} className="flex items-center gap-2">
+                        <input
+                          value={v.size}
+                          onChange={(e) => updateVariation(v.id, "size", e.target.value)}
+                          placeholder="Size (M)"
+                          className="w-20 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
+                        />
+                        <input
+                          value={v.color}
+                          onChange={(e) => updateVariation(v.id, "color", e.target.value)}
+                          placeholder="Color (Black)"
+                          className="w-24 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
+                        />
+                        <input
+                          type="number"
+                          value={v.price}
+                          onChange={(e) => updateVariation(v.id, "price", e.target.value)}
+                          placeholder="Price"
+                          className="w-20 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
+                        />
+                        <input
+                          type="number"
+                          value={v.stock}
+                          onChange={(e) => updateVariation(v.id, "stock", e.target.value)}
+                          placeholder="Stock (optional)"
+                          className="w-28 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
+                        />
+                        <button
+                          onClick={() => removeVariationRow(v.id)}
+                          className="font-display text-rust hover:text-ink"
+                          aria-label="Remove"
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={addVariationRow}
+                    className="mt-3 font-display text-xs tracking-widest text-jade hover:text-ink"
                   >
-                    <option value="sats">sats</option>
-                    <option value="USD">USD</option>
-                  </select>
+                    + ADD ANOTHER VARIATION
+                  </button>
                 </div>
-              </div>
+              )}
 
               <div>
                 <label className="block font-display text-xs tracking-widest text-ink/60">
-                  IMAGE URLS (one per line)
+                  IMAGE URLS (one per line, shared across all variations)
                 </label>
                 <textarea
                   value={images}
@@ -274,8 +449,8 @@ export default function SellPage() {
                     SHIPPING (OPTIONAL)
                   </label>
                   <p className="mt-1 mb-3 text-xs italic text-ink/50">
-                    Leave price blank to skip &mdash; buyers won&rsquo;t be
-                    shown a shipping cost.
+                    Leave price blank to skip. Applies to all variations of
+                    this product.
                   </p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -344,7 +519,11 @@ export default function SellPage() {
                 disabled={status === "working"}
                 className="w-full border-2 border-ink bg-ink px-4 py-3 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust disabled:opacity-50"
               >
-                {status === "working" ? "PUBLISHING…" : "PUBLISH LISTING"}
+                {status === "working"
+                  ? "PUBLISHING…"
+                  : hasVariations
+                  ? `PUBLISH LISTING + ${variations.filter((v) => v.price).length} VARIATIONS`
+                  : "PUBLISH LISTING"}
               </button>
             </div>
           )}

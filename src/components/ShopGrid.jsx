@@ -6,7 +6,7 @@ import { SELLERS } from "@/lib/sellers";
 import ProductCard from "./ProductCard";
 
 function SellerListings({ seller }) {
-  const { listings, loading, error } = useNip99Listings(seller.pubkey);
+  const { listings, allListings, loading, error } = useNip99Listings(seller.pubkey);
 
   if (error) {
     return (
@@ -43,7 +43,12 @@ function SellerListings({ seller }) {
   return (
     <div className="mt-12 grid gap-8 sm:grid-cols-3">
       {listings.map((listing) => (
-        <ProductCard key={listing.id} listing={listing} sellerPubkey={seller.pubkey} />
+        <ProductCard
+          key={listing.id}
+          listing={listing}
+          sellerPubkey={seller.pubkey}
+          allListings={allListings}
+        />
       ))}
     </div>
   );

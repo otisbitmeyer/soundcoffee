@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import CheckoutModal from "./CheckoutModal";
+import VariantPicker from "./VariantPicker";
+import { getVariationsOf } from "@/hooks/useNip99Listings";
 
 const SUMMARY_LIMIT = 90;
 
@@ -15,10 +17,20 @@ function formatPrice(price) {
   return frequency ? `${label} / ${frequency}` : label;
 }
 
-export default function ProductCard({ listing, sellerPubkey }) {
+export default function ProductCard({ listing, sellerPubkey, allListings }) {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [chosenVariation, setChosenVariation] = useState(null);
   const [expanded, setExpanded] = useState(false);
-  const priceLabel = formatPrice(listing.price);
+
+  const isVariable = listing.productType === "variable";
+  const variations = isVariable ? getVariationsOf(allListings, listing.coordinate) : [];
+
+  const priceLabel = isVariable
+    ? variations.length > 0
+      ? "SEE OPTIONS"
+      : null
+    : formatPrice(listing.price);
 
   // Prefer the longer markdown content for the expanded view, falling
   // back to the summary if that's all there is.
@@ -70,19 +82,40 @@ export default function ProductCard({ listing, sellerPubkey }) {
 
         <div className="mt-4 pt-2">
           <button
-            onClick={() => setCheckoutOpen(true)}
-            className="w-full border-2 border-ink bg-ink px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust"
+            onClick={() => (isVariable ? setPickerOpen(true) : setCheckoutOpen(true))}
+            disabled={isVariable && variations.length === 0}
+            className="w-full border-2 border-ink bg-ink px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust disabled:cursor-not-allowed disabled:opacity-40"
           >
-            ⚡ BUY WITH LIGHTNING
+            {isVariable
+              ? variations.length === 0
+                ? "COMING SOON"
+                : "SELECT OPTIONS"
+              : "⚡ BUY WITH LIGHTNING"}
           </button>
         </div>
       </div>
 
+      {pickerOpen && (
+        <VariantPicker
+          parentListing={listing}
+          variations={variations}
+          onSelect={(variation) => {
+            setChosenVariation(variation);
+            setPickerOpen(false);
+            setCheckoutOpen(true);
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+
       {checkoutOpen && (
         <CheckoutModal
-          listing={listing}
+          listing={chosenVariation || listing}
           sellerPubkey={sellerPubkey}
-          onClose={() => setCheckoutOpen(false)}
+          onClose={() => {
+            setCheckoutOpen(false);
+            setChosenVariation(null);
+          }}
         />
       )}
     </div>
