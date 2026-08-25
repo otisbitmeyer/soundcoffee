@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback } from "react";
-import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
+import { generateSecretKey, getPublicKey, finalizeEvent } from "nostr-tools/pure";
 import { nsecEncode, npubEncode, decode } from "nostr-tools/nip19";
 
 const AuthContext = createContext(null);
@@ -69,6 +69,23 @@ export function AuthProvider({ children }) {
     setMethod(null);
   }, []);
 
+  // Signs a Nostr event template ({ kind, created_at, tags, content }),
+  // regardless of which login method is active. Extension users sign via
+  // the extension (their key never touches this site); created/imported
+  // users sign with the in-memory secret key.
+  const signEvent = useCallback(
+    async (template) => {
+      if (!pubkey) throw new Error("Not logged in.");
+      if (method === "extension") {
+        if (!window.nostr) throw new Error("Nostr extension not available.");
+        return window.nostr.signEvent(template);
+      }
+      if (!secretKey) throw new Error("No key available to sign with.");
+      return finalizeEvent(template, secretKey);
+    },
+    [pubkey, method, secretKey]
+  );
+
   const npub = pubkey ? npubEncode(pubkey) : null;
 
   return (
@@ -83,6 +100,7 @@ export function AuthProvider({ children }) {
         createNewKeys,
         importKey,
         logout,
+        signEvent,
       }}
     >
       {children}

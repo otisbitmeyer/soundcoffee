@@ -1,42 +1,37 @@
 "use client";
 
+import Image from "next/image";
+import Link from "next/link";
 import Header from "@/components/Header";
-import EpisodeList from "@/components/EpisodeList";
 import { usePodcastFeed } from "@/hooks/usePodcastFeed";
 import { PODCAST_FEEDS } from "@/lib/podcastFeeds";
 
-function FeedSection({ feed }) {
-  const { episodes, loading, error } = usePodcastFeed(feed.url);
+function ShowCard({ feed }) {
+  const { feedInfo, episodes } = usePodcastFeed(feed.url);
 
   return (
-    <div className="border-b-4 border-paper/20 py-16 last:border-b-0">
-      <h2 className="font-display text-3xl tracking-wide text-paper sm:text-4xl">
-        {feed.name}
-      </h2>
-
-      {error && (
-        <p className="mt-6 font-serif italic text-paper/50">
-          Couldn&rsquo;t load this feed right now &mdash; check back soon.
+    <Link
+      href={`/listening-lair/${feed.slug}`}
+      className="group flex items-center gap-6 border-2 border-paper/30 p-6 transition hover:border-jade"
+    >
+      {feedInfo?.image && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={feedInfo.image}
+          alt=""
+          className="h-20 w-20 shrink-0 border-2 border-paper/30 object-cover"
+        />
+      )}
+      <div>
+        <h2 className="font-display text-2xl tracking-wide">{feed.name}</h2>
+        <p className="mt-1 font-serif text-sm text-paper/60">
+          {episodes ? `${episodes.length} episodes` : "Loading…"}
         </p>
-      )}
-
-      {!error && (loading || !episodes) && (
-        <div className="mt-8 grid gap-4 sm:grid-cols-2">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="animate-pulse border-2 border-paper/20 p-6">
-              <div className="h-3 w-24 bg-paper/10" />
-              <div className="mt-3 h-5 w-3/4 bg-paper/10" />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!error && episodes && (
-        <div className="mt-8">
-          <EpisodeList episodes={episodes} />
-        </div>
-      )}
-    </div>
+      </div>
+      <span className="ml-auto shrink-0 font-display text-sm tracking-widest text-paper/40 group-hover:text-jade">
+        ENTER &rarr;
+      </span>
+    </Link>
   );
 }
 
@@ -46,23 +41,30 @@ export default function ListeningLair() {
       <Header />
 
       <main className="flex-1 bg-ink text-paper">
-        <div className="border-b-4 border-paper/20 px-6 py-16 sm:py-20">
-          <div className="mx-auto max-w-4xl text-center">
-            <h1 className="font-display text-5xl tracking-wide sm:text-6xl">
-              THE LISTENING LAIR
-            </h1>
-            <p className="mt-4 font-serif text-lg text-paper/80">
-              Every show, every voice, all in one place &mdash; starting
-              with Sound Coffee itself. Club members&rsquo; own shows and
-              music will land here too, straight from their own feeds.
-            </p>
-          </div>
+        <div className="border-b-4 border-paper/20 px-6 py-16 text-center sm:py-20">
+          <h1 className="font-display text-5xl tracking-wide sm:text-6xl">
+            THE LISTENING LAIR
+          </h1>
+          <Image
+            src="/listening-lair-graphic.png"
+            alt="Conversations in the coffee shop."
+            width={1024}
+            height={1536}
+            className="mx-auto mt-6 h-64 w-auto sm:h-72"
+          />
         </div>
 
-        <div className="mx-auto max-w-6xl px-6">
-          {PODCAST_FEEDS.map((feed) => (
-            <FeedSection key={feed.id} feed={feed} />
-          ))}
+        <div className="mx-auto max-w-3xl px-6 py-16">
+          <div className="space-y-4">
+            {PODCAST_FEEDS.map((feed) => (
+              <ShowCard key={feed.id} feed={feed} />
+            ))}
+          </div>
+
+          <p className="mt-10 text-center font-serif italic text-paper/50">
+            Club members&rsquo; own shows and music will show up here too,
+            straight from their own feeds.
+          </p>
         </div>
       </main>
 

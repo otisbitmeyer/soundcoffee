@@ -6,18 +6,23 @@ const cache = new Map();
 
 /**
  * Fetches and parses an RSS feed's episodes via a CORS-friendly proxy.
- * Returns { episodes, loading, error }.
+ * Returns { episodes, feedInfo, loading, error }.
  *   episodes: array of { title, link, pubDate, description, audioUrl, guid }
+ *   feedInfo: { title, description, image } for the show itself
  */
 export function usePodcastFeed(feedUrl) {
-  const [episodes, setEpisodes] = useState(() => cache.get(feedUrl) ?? null);
+  const cached = cache.get(feedUrl);
+  const [episodes, setEpisodes] = useState(cached?.episodes ?? null);
+  const [feedInfo, setFeedInfo] = useState(cached?.feedInfo ?? null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(!cache.has(feedUrl));
 
   useEffect(() => {
     if (!feedUrl) return;
     if (cache.has(feedUrl)) {
-      setEpisodes(cache.get(feedUrl));
+      const c = cache.get(feedUrl);
+      setEpisodes(c.episodes);
+      setFeedInfo(c.feedInfo);
       setLoading(false);
       return;
     }
@@ -46,8 +51,14 @@ export function usePodcastFeed(feedUrl) {
           audioUrl: item.enclosure?.link || null,
           guid: item.guid,
         }));
-        cache.set(feedUrl, parsed);
+        const info = {
+          title: data.feed?.title,
+          description: data.feed?.description,
+          image: data.feed?.image,
+        };
+        cache.set(feedUrl, { episodes: parsed, feedInfo: info });
         setEpisodes(parsed);
+        setFeedInfo(info);
       })
       .catch(() => {
         if (!cancelled) setError(true);
@@ -61,5 +72,5 @@ export function usePodcastFeed(feedUrl) {
     };
   }, [feedUrl]);
 
-  return { episodes, loading, error };
+  return { episodes, feedInfo, loading, error };
 }

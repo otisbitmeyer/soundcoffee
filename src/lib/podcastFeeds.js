@@ -5,6 +5,7 @@
 export const PODCAST_FEEDS = [
   {
     id: "sound-coffee",
+    slug: "sound-coffee",
     name: "Sound Coffee",
     url: "https://serve.podhome.fm/rss/de47e794-c0a3-4bb4-8712-cce1e4566b7e",
   },

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import ZapButton from "./ZapButton";
+import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
 function formatDate(dateString) {
   try {
@@ -57,6 +59,16 @@ function EpisodeCard({ episode }) {
           <a href={episode.link}>Listen on the episode page instead.</a>
         </audio>
       )}
+
+      <div className="mt-4 border-t border-paper/20 pt-4">
+        <ZapButton
+          recipientPubkey={SOUND_COFFEE_PUBKEY}
+          label={`Zap: ${episode.title}`}
+          className="font-display text-xs tracking-widest text-paper/60 transition hover:text-jade"
+        >
+          ⚡ ZAP THIS EPISODE
+        </ZapButton>
+      </div>
     </div>
   );
 }

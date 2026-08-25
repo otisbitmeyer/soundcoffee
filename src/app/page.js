@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Header from "@/components/Header";
 import PodcastEpisodes from "@/components/PodcastEpisodes";
+import ShopGrid from "@/components/ShopGrid";
 
 export default function Home() {
   return (
@@ -82,37 +83,11 @@ export default function Home() {
         {/* ---------- SHOP ---------- */}
         <section id="shop" className="border-b-4 border-ink bg-paper">
           <div className="mx-auto max-w-6xl px-6 py-20">
-            <div className="flex items-baseline justify-between">
-              <h2 className="font-display text-4xl tracking-wide text-ink sm:text-5xl">
-                SHOP
-              </h2>
-              <span className="font-serif italic text-ink/50">
-                live products load here
-              </span>
-            </div>
+            <h2 className="font-display text-4xl tracking-wide text-ink sm:text-5xl">
+              SHOP
+            </h2>
 
-            <div className="mt-12 grid gap-8 sm:grid-cols-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="group border-2 border-ink">
-                  <div className="flex aspect-square items-center justify-center border-b-2 border-ink bg-ink/5">
-                    <span className="font-display text-xs tracking-widest text-ink/40">
-                      PRODUCT IMAGE
-                    </span>
-                  </div>
-                  <div className="p-5">
-                    <h3 className="font-display text-lg text-ink">
-                      Placeholder Roast
-                    </h3>
-                    <p className="mt-1 font-serif text-sm text-ink/60">
-                      Pulled live from a NIP-99 listing once connected.
-                    </p>
-                    <span className="mt-3 block font-display text-rust">
-                      $18.00
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <ShopGrid />
           </div>
         </section>
 
