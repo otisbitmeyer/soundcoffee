@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { Suspense } from "react";
 import Header from "@/components/Header";
 import PodcastEpisodes from "@/components/PodcastEpisodes";
@@ -66,12 +67,12 @@ export default function Home() {
                   makes it possible.
                 </p>
                 <div className="mt-5">
-                  <a
+                  <Link
                     href="/?seller=sound-coffee#shop"
                     className="inline-block border-2 border-ink bg-ink px-5 py-2.5 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust"
                   >
                     BUY COFFEE
-                  </a>
+                  </Link>
                 </div>
               </div>
 

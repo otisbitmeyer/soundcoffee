@@ -111,17 +111,17 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
         comment: `Order ${newOrderId}`,
       });
 
-      // Register the order with our backend so the scheduled job can
-      // watch for settlement (via the verify URL, when the provider
-      // supports LUD-21) and auto-confirm club membership. Best-effort —
-      // if this fails, checkout still works, it just falls back fully to
-      // the buyer's own "I've paid" confirmation.
-      fetch("/api/pending-order", {
+      // Register with our own backend so settlement gets tracked toward
+      // club membership. Best-effort — if this fails, checkout still
+      // works, it just falls back fully to the buyer's own "I've paid"
+      // confirmation.
+      fetch("/api/pending-payment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          orderId: newOrderId,
-          buyerPubkey: pubkey,
+          id: newOrderId,
+          type: "purchase",
+          pubkey,
           sellerPubkey,
           invoice: pr,
           verifyUrl: verify,

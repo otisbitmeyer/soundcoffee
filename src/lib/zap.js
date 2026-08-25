@@ -61,7 +61,8 @@ export async function requestPlainInvoice({ callback, amountMsats, comment }) {
 }
 /**
  * Takes a signed zap request event and requests the actual Lightning
- * invoice from the recipient's LNURL callback.
+ * invoice from the recipient's LNURL callback. Returns the invoice and,
+ * if supported, a `verify` URL for checking settlement later.
  */
 export async function requestZapInvoice({ callback, amountMsats, signedZapRequest, lnurl }) {
   const params = new URLSearchParams({
@@ -75,5 +76,5 @@ export async function requestZapInvoice({ callback, amountMsats, signedZapReques
   if (!data.pr) {
     throw new Error(data.reason || "Couldn't generate an invoice.");
   }
-  return data.pr; // bolt11 invoice string
+  return { pr: data.pr, verify: data.verify || null };
 }

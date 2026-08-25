@@ -1,11 +1,18 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { generateSecretKey, getPublicKey, finalizeEvent } from "nostr-tools/pure";
 import { nsecEncode, npubEncode, decode } from "nostr-tools/nip19";
 import { getConversationKey, encrypt as nip44EncryptRaw } from "nostr-tools/nip44";
 
 const AuthContext = createContext(null);
+
+// Only ever stores { pubkey, method: "extension" } — NEVER a secret key.
+// This is what makes persistence safe: an extension session can be
+// restored by just asking the extension for its pubkey again (it holds
+// the real key, not us). Created/imported keys are deliberately never
+// persisted here — see the note by `secretKey` below.
+const STORAGE_KEY = "sound-coffee-auth";
 
 export function AuthProvider({ children }) {
   // pubkey: hex public key, always safe to keep in state/memory.
@@ -18,6 +25,32 @@ export function AuthProvider({ children }) {
   const [pubkey, setPubkey] = useState(null);
   const [secretKey, setSecretKey] = useState(null);
   const [method, setMethod] = useState(null); // "extension" | "created" | "imported"
+  const [restoring, setRestoring] = useState(true);
+
+  // On first load, silently try to restore an extension session. Created/
+  // imported-key sessions can't be restored this way on purpose — those
+  // log out on refresh, which is the intended, safer default for holding
+  // an actual private key.
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        if (saved.method === "extension" && window.nostr) {
+          const pk = await window.nostr.getPublicKey();
+          setPubkey(pk);
+          setMethod("extension");
+        } else {
+          localStorage.removeItem(STORAGE_KEY);
+        }
+      } catch {
+        localStorage.removeItem(STORAGE_KEY);
+      } finally {
+        setRestoring(false);
+      }
+    })();
+  }, []);
 
   const loginWithExtension = useCallback(async () => {
     if (typeof window === "undefined" || !window.nostr) {
@@ -29,6 +62,7 @@ export function AuthProvider({ children }) {
     setPubkey(pk);
     setSecretKey(null);
     setMethod("extension");
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ method: "extension" }));
     return pk;
   }, []);
 
@@ -68,6 +102,7 @@ export function AuthProvider({ children }) {
     setPubkey(null);
     setSecretKey(null);
     setMethod(null);
+    localStorage.removeItem(STORAGE_KEY);
   }, []);
 
   // Signs a Nostr event template ({ kind, created_at, tags, content }),
@@ -119,6 +154,7 @@ export function AuthProvider({ children }) {
         secretKey,
         method,
         isLoggedIn: !!pubkey,
+        restoring,
         loginWithExtension,
         createNewKeys,
         importKey,

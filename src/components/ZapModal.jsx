@@ -17,7 +17,7 @@ export default function ZapModal({
   aTag,
   onClose,
 }) {
-  const { isLoggedIn, signEvent } = useAuth();
+  const { isLoggedIn, pubkey, signEvent } = useAuth();
   const { profile } = useProfile(recipientPubkey);
 
   const [showLogin, setShowLogin] = useState(false);
@@ -65,11 +65,28 @@ export default function ZapModal({
 
       const signed = await signEvent(template);
 
-      const pr = await requestZapInvoice({
+      const { pr, verify } = await requestZapInvoice({
         callback: lnurlData.callback,
         amountMsats,
         signedZapRequest: signed,
       });
+
+      // Register with our own backend so settlement gets tracked toward
+      // club membership even if this Lightning provider never publishes
+      // a proper NIP-57 zap receipt to relays.
+      fetch("/api/pending-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: `${signed.id}`,
+          type: "zap",
+          pubkey,
+          sellerPubkey: recipientPubkey,
+          invoice: pr,
+          verifyUrl: verify,
+          amountSats: effectiveAmount,
+        }),
+      }).catch(() => {});
 
       const qr = await QRCode.toDataURL(pr.toUpperCase(), { margin: 1, width: 320 });
 
