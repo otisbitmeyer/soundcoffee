@@ -48,9 +48,9 @@ export default function ListeningLair() {
           <Image
             src="/listening-lair-graphic.png"
             alt="Conversations in the coffee shop."
-            width={1536}
-            height={1024}
-            className="mx-auto -mt-4 h-[300px] w-auto sm:h-[350px]"
+            width={1532}
+            height={156}
+            className="mx-auto -mt-2 h-auto w-full max-w-xl"
           />
         </div>
 
