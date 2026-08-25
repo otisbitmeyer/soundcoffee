@@ -46,7 +46,7 @@ export default function ListeningLair() {
             THE LISTENING LAIR
           </h1>
           <Image
-            src="/listening-lair-graphic.png"
+            src="/listening-lair-graphic-v2.png"
             alt="Conversations in the coffee shop."
             width={1532}
             height={156}
