@@ -4,7 +4,6 @@ import { useState } from "react";
 import { SimplePool } from "nostr-tools/pool";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
-import ImageUploadField from "@/components/ImageUploadField";
 import { useAuth } from "@/context/AuthContext";
 import { DEFAULT_RELAYS } from "@/lib/relays";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
@@ -21,7 +20,7 @@ function slugify(text) {
 
 let nextRowId = 1;
 function newVariationRow() {
-  return { id: nextRowId++, size: "", color: "", price: "", stock: "", image: "" };
+  return { id: nextRowId++, size: "", color: "", price: "", stock: "", images: "" };
 }
 
 export default function SellPage() {
@@ -33,8 +32,7 @@ export default function SellPage() {
   const [description, setDescription] = useState("");
   const [priceAmount, setPriceAmount] = useState("");
   const [priceCurrency, setPriceCurrency] = useState("sats");
-  const [primaryImage, setPrimaryImage] = useState("");
-  const [extraImageUrls, setExtraImageUrls] = useState("");
+  const [imageUrls, setImageUrls] = useState("");
   const [format, setFormat] = useState("physical");
 
   // Variations (e.g. t-shirt sizes/colors) — Gamma spec's variable/
@@ -109,10 +107,10 @@ export default function SellPage() {
 
     try {
       const dTag = `${slugify(title)}-${Date.now()}`;
-      const defaultImageUrls = [
-        primaryImage,
-        ...extraImageUrls.split("\n").map((s) => s.trim()).filter(Boolean),
-      ].filter(Boolean);
+      const defaultImageUrls = imageUrls
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
       const pool = new SimplePool();
 
       // Shipping option — published once, referenced by the parent and
@@ -183,9 +181,11 @@ export default function SellPage() {
           if (v.size.trim()) tags.push(["spec", "size", v.size.trim()]);
           if (v.color.trim()) tags.push(["spec", "color", v.color.trim()]);
           if (v.stock) tags.push(["stock", v.stock]);
-          // A variation with its own photo uses that; otherwise it falls
-          // back to the product's default image(s).
-          const variantImages = v.image ? [v.image] : defaultImageUrls;
+          // A variation with its own photos uses those; otherwise it
+          // falls back to the product's default image(s).
+          const variantImages = v.images.trim()
+            ? v.images.split(",").map((s) => s.trim()).filter(Boolean)
+            : defaultImageUrls;
           for (const url of variantImages) tags.push(["image", url]);
 
           const variantTemplate = {
@@ -232,8 +232,7 @@ export default function SellPage() {
     setSummary("");
     setDescription("");
     setPriceAmount("");
-    setPrimaryImage("");
-    setExtraImageUrls("");
+    setImageUrls("");
     setShipPrice("");
     setHasVariations(false);
     setVariations([newVariationRow(), newVariationRow()]);
@@ -371,52 +370,55 @@ export default function SellPage() {
                   </div>
                   <p className="mt-1 mb-3 text-xs italic text-ink/50">
                     One row per size/color combo you actually sell. Leave
-                    either field blank if it doesn&rsquo;t apply. Upload a
-                    photo per row for a color-specific picture — leave it
-                    blank to use the product&rsquo;s default photo.
+                    either field blank if it doesn&rsquo;t apply. Paste
+                    photo URLs per row for a color-specific picture — leave
+                    it blank to use the product&rsquo;s default photo(s).
                   </p>
 
                   <div className="space-y-3">
                     {variations.map((v) => (
-                      <div key={v.id} className="flex items-center gap-2 border-b border-ink/10 pb-3 last:border-b-0">
-                        <ImageUploadField
-                          value={v.image}
-                          onChange={(url) => updateVariation(v.id, "image", url)}
-                          compact
-                        />
+                      <div key={v.id} className="space-y-2 border-b border-ink/10 pb-3 last:border-b-0">
+                        <div className="flex items-center gap-2">
+                          <input
+                            value={v.size}
+                            onChange={(e) => updateVariation(v.id, "size", e.target.value)}
+                            placeholder="Size (M)"
+                            className="w-16 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
+                          />
+                          <input
+                            value={v.color}
+                            onChange={(e) => updateVariation(v.id, "color", e.target.value)}
+                            placeholder="Color (Black)"
+                            className="w-20 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
+                          />
+                          <input
+                            type="number"
+                            value={v.price}
+                            onChange={(e) => updateVariation(v.id, "price", e.target.value)}
+                            placeholder="Price"
+                            className="w-16 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
+                          />
+                          <input
+                            type="number"
+                            value={v.stock}
+                            onChange={(e) => updateVariation(v.id, "stock", e.target.value)}
+                            placeholder="Stock"
+                            className="w-16 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
+                          />
+                          <button
+                            onClick={() => removeVariationRow(v.id)}
+                            className="font-display text-rust hover:text-ink"
+                            aria-label="Remove"
+                          >
+                            &times;
+                          </button>
+                        </div>
                         <input
-                          value={v.size}
-                          onChange={(e) => updateVariation(v.id, "size", e.target.value)}
-                          placeholder="Size (M)"
-                          className="w-16 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
+                          value={v.images}
+                          onChange={(e) => updateVariation(v.id, "images", e.target.value)}
+                          placeholder="Photo URLs for this color, comma separated (optional)"
+                          className="w-full border-2 border-ink/30 px-2 py-1.5 font-mono text-xs focus:border-ink focus:outline-none"
                         />
-                        <input
-                          value={v.color}
-                          onChange={(e) => updateVariation(v.id, "color", e.target.value)}
-                          placeholder="Color (Black)"
-                          className="w-20 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
-                        />
-                        <input
-                          type="number"
-                          value={v.price}
-                          onChange={(e) => updateVariation(v.id, "price", e.target.value)}
-                          placeholder="Price"
-                          className="w-16 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
-                        />
-                        <input
-                          type="number"
-                          value={v.stock}
-                          onChange={(e) => updateVariation(v.id, "stock", e.target.value)}
-                          placeholder="Stock"
-                          className="w-16 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
-                        />
-                        <button
-                          onClick={() => removeVariationRow(v.id)}
-                          className="font-display text-rust hover:text-ink"
-                          aria-label="Remove"
-                        >
-                          &times;
-                        </button>
                       </div>
                     ))}
                   </div>
@@ -432,23 +434,20 @@ export default function SellPage() {
 
               <div>
                 <label className="block font-display text-xs tracking-widest text-ink/60">
-                  {hasVariations ? "DEFAULT PHOTO (used if a variation has none)" : "PHOTO"}
+                  {hasVariations ? "DEFAULT PHOTOS (used if a variation has none)" : "PHOTOS"}
                 </label>
-                <div className="mt-1">
-                  <ImageUploadField value={primaryImage} onChange={setPrimaryImage} />
-                </div>
-                <p className="mt-2 text-xs italic text-ink/50">
-                  Uploads straight to nostr.build. Have extra photos
-                  already hosted elsewhere? Paste more URLs below, one per
-                  line.
-                </p>
                 <textarea
-                  value={extraImageUrls}
-                  onChange={(e) => setExtraImageUrls(e.target.value)}
-                  rows={2}
-                  className="mt-2 w-full resize-none border-2 border-ink/30 px-3 py-2 font-mono text-xs focus:border-ink focus:outline-none"
-                  placeholder="https://..."
+                  value={imageUrls}
+                  onChange={(e) => setImageUrls(e.target.value)}
+                  rows={3}
+                  className="mt-1 w-full resize-none border-2 border-ink/30 px-3 py-2 font-mono text-xs focus:border-ink focus:outline-none"
+                  placeholder="https://...&#10;https://..."
                 />
+                <p className="mt-1 text-xs italic text-ink/50">
+                  One URL per line — needs to already be hosted somewhere
+                  (nostr.build, etc). The first one is used as the main
+                  photo; buyers can click through the rest.
+                </p>
               </div>
 
               <div>

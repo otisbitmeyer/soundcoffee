@@ -3,6 +3,7 @@
 import { useState } from "react";
 import CheckoutModal from "./CheckoutModal";
 import VariantPicker from "./VariantPicker";
+import ImageGallery from "./ImageGallery";
 import { getVariationsOf } from "@/hooks/useNip99Listings";
 
 const SUMMARY_LIMIT = 90;
@@ -43,20 +44,11 @@ export default function ProductCard({ listing, sellerPubkey, allListings }) {
 
   return (
     <div className="flex flex-col border-2 border-ink text-center">
-      <div className="flex aspect-square items-center justify-center overflow-hidden border-b-2 border-ink bg-ink/5">
-        {listing.images[0] ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={listing.images[0]}
-            alt={listing.title}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <span className="font-display text-xs tracking-widest text-ink/40">
-            NO IMAGE
-          </span>
-        )}
-      </div>
+      <ImageGallery
+        images={listing.images}
+        alt={listing.title}
+        className="aspect-square border-b-2 border-ink"
+      />
       <div className="flex flex-1 flex-col p-5">
         <h3 className="font-display text-lg text-ink">{listing.title}</h3>
 
