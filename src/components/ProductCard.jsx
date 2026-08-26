@@ -5,6 +5,7 @@ import CheckoutModal from "./CheckoutModal";
 import VariantPicker from "./VariantPicker";
 import ImageGallery from "./ImageGallery";
 import { getVariationsOf } from "@/hooks/useNip99Listings";
+import { buyButtonLabel } from "@/lib/buyButtonLabel";
 
 const SUMMARY_LIMIT = 90;
 
@@ -82,7 +83,7 @@ export default function ProductCard({ listing, sellerPubkey, allListings }) {
               ? variations.length === 0
                 ? "COMING SOON"
                 : "SELECT OPTIONS"
-              : "BUY BEANS"}
+              : buyButtonLabel(listing.title)}
           </button>
         </div>
       </div>

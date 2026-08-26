@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import ImageGallery from "./ImageGallery";
+import { buyButtonLabel } from "@/lib/buyButtonLabel";
 
 function formatPrice(price) {
   if (!price) return null;
@@ -120,7 +121,7 @@ export default function VariantPicker({ parentListing, variations, onSelect, onC
             disabled={!matchedVariation || matchedVariation.status === "sold"}
             className="w-full border-2 border-ink bg-ink px-4 py-3 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {matchedVariation ? "⚡ BUY WITH LIGHTNING" : "SELECT OPTIONS"}
+            {matchedVariation ? buyButtonLabel(parentListing.title) : "SELECT OPTIONS"}
           </button>
         </div>
       </div>

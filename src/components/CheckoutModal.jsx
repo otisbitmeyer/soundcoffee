@@ -539,26 +539,31 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
                 it.
               </p>
 
-              <div className="space-y-2">
+              {status === "working" ? (
                 <button
-                  onClick={() => handlePlaceOrder("lightning")}
-                  disabled={status === "working" || !totalSats}
-                  className="w-full border-2 border-ink bg-ink px-4 py-3 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust disabled:opacity-50"
+                  disabled
+                  className="w-full border-2 border-ink bg-ink px-4 py-3 font-display text-sm tracking-widest text-paper opacity-70"
                 >
-                  {status === "working"
-                    ? "PLACING ORDER…"
-                    : `⚡ PAY WITH LIGHTNING${totalSats ? ` (${totalSats.toLocaleString()} sats)` : ""}`}
+                  PLACING ORDER…
                 </button>
-                <button
-                  onClick={() => handlePlaceOrder("card")}
-                  disabled={status === "working" || !totalUsdCents}
-                  className="w-full border-2 border-ink px-4 py-3 font-display text-sm tracking-widest text-ink transition hover:border-jade hover:text-jade disabled:opacity-50"
-                >
-                  {status === "working"
-                    ? "PLACING ORDER…"
-                    : `💳 PAY WITH CARD${totalUsdCents ? ` ($${(totalUsdCents / 100).toFixed(2)})` : ""}`}
-                </button>
-              </div>
+              ) : (
+                <div className="space-y-2">
+                  <button
+                    onClick={() => handlePlaceOrder("lightning")}
+                    disabled={!totalSats}
+                    className="w-full border-2 border-ink bg-ink px-4 py-3 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust disabled:opacity-50"
+                  >
+                    {`⚡ PAY WITH LIGHTNING${totalSats ? ` (${totalSats.toLocaleString()} sats)` : ""}`}
+                  </button>
+                  <button
+                    onClick={() => handlePlaceOrder("card")}
+                    disabled={!totalUsdCents}
+                    className="w-full border-2 border-ink px-4 py-3 font-display text-sm tracking-widest text-ink transition hover:border-jade hover:text-jade disabled:opacity-50"
+                  >
+                    {`💳 PAY WITH CARD${totalUsdCents ? ` ($${(totalUsdCents / 100).toFixed(2)})` : ""}`}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
