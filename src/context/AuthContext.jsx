@@ -77,6 +77,21 @@ export function AuthProvider({ children }) {
     return { secretKey: sk, pubkey: pk, nsec: nsecEncode(sk), npub: npubEncode(pk) };
   }, []);
 
+  // A fresh, order-scoped identity for guest checkout — real Nostr keys,
+  // real order/chat/dashboard functionality, but generated silently with
+  // zero setup for someone who doesn't already have a Nostr identity and
+  // shouldn't have to get one just to buy coffee. Distinct from
+  // createNewKeys (method: "guest" vs "created") so the UI can treat it
+  // more gently — this isn't "your account," just this one order's key.
+  const createGuestKeys = useCallback(() => {
+    const sk = generateSecretKey();
+    const pk = getPublicKey(sk);
+    setPubkey(pk);
+    setSecretKey(sk);
+    setMethod("guest");
+    return { secretKey: sk, pubkey: pk, nsec: nsecEncode(sk), npub: npubEncode(pk) };
+  }, []);
+
   // NIP-46 remote signer login (e.g. Amber on Android). `bunkerInput` is
   // either a "bunker://..." connection string or an nsec.app-style
   // NIP-05 identifier. The actual private key never touches this site —
@@ -214,6 +229,7 @@ export function AuthProvider({ children }) {
         loginWithExtension,
         loginWithBunker,
         createNewKeys,
+        createGuestKeys,
         importKey,
         logout,
         signEvent,

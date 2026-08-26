@@ -3,6 +3,8 @@
 import { useState, useRef } from "react";
 import QRCode from "qrcode";
 import { SimplePool } from "nostr-tools/pool";
+import { finalizeEvent } from "nostr-tools/pure";
+import { getConversationKey, encrypt as nip44EncryptRaw } from "nostr-tools/nip44";
 import { useAuth } from "@/context/AuthContext";
 import { useProfile } from "@/hooks/useProfile";
 import { resolveLud16, requestPlainInvoice } from "@/lib/zap";
@@ -26,7 +28,7 @@ function satsFromSatsOrBtc(price) {
 }
 
 export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
-  const { isLoggedIn, pubkey, npub, signEvent, nip44Encrypt } = useAuth();
+  const { isLoggedIn, pubkey, npub, signEvent, nip44Encrypt, createGuestKeys } = useAuth();
   const { profile: sellerProfile } = useProfile(sellerPubkey);
   const { btcUsdPrice, loading: priceLoading, error: priceError } = useBtcUsdPrice();
 
@@ -41,6 +43,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
   const [qrDataUrl, setQrDataUrl] = useState(null);
   const [orderId, setOrderId] = useState(null);
   const [brantaLink, setBrantaLink] = useState(null);
+  const [guestNsec, setGuestNsec] = useState(null);
 
   // A React state check alone isn't fast enough to stop a very quick
   // double-click — the button doesn't actually disable until after a
@@ -64,13 +67,51 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
   const totalSats = unitSats ? unitSats * quantity + (shippingSats || 0) : null;
   const requiresShipping = listing.format === "physical";
 
-  async function sendGiftWrapped(eventTemplate) {
+  // For card payments, Stripe needs a USD amount regardless of how the
+  // item is priced. If already USD, use that directly (more accurate
+  // than converting through sats and back). Otherwise derive USD from
+  // the same live BTC price used everywhere else on the site.
+  const totalUsdCents = isFiatUsd
+    ? Math.round(
+        (Number(listing.price.amount) * quantity +
+          (shippingIsFiatUsd ? Number(shippingOption.price.amount) : 0)) *
+          100
+      )
+    : totalSats && btcUsdPrice
+    ? Math.round((totalSats / 100_000_000) * btcUsdPrice * 100)
+    : null;
+
+  // Returns { pubkey, signEvent, nip44Encrypt } for whoever's checking
+  // out — a real logged-in user's context functions, OR a freshly
+  // generated guest identity. Guest signing/encrypting is done directly
+  // against the just-generated key rather than through the context's
+  // signEvent/nip44Encrypt, because React state updates aren't visible
+  // synchronously — those functions wouldn't see the new key until after
+  // a re-render, which is too late for the rest of this same call.
+  async function ensureIdentity() {
+    if (isLoggedIn) {
+      return { pubkey, signEvent, nip44Encrypt, isGuest: false };
+    }
+    const guest = createGuestKeys();
+    setGuestNsec(guest.nsec);
+    return {
+      pubkey: guest.pubkey,
+      isGuest: true,
+      signEvent: async (template) => finalizeEvent(template, guest.secretKey),
+      nip44Encrypt: async (recipientPubkey, plaintext) => {
+        const conversationKey = getConversationKey(guest.secretKey, recipientPubkey);
+        return nip44EncryptRaw(plaintext, conversationKey);
+      },
+    };
+  }
+
+  async function sendGiftWrapped(eventTemplate, identity) {
     const [toSeller, toSelf] = await giftWrapForBoth({
       eventTemplate,
-      senderPubkey: pubkey,
+      senderPubkey: identity.pubkey,
       recipientPubkey: sellerPubkey,
-      authNip44Encrypt: nip44Encrypt,
-      authSignEvent: signEvent,
+      authNip44Encrypt: identity.nip44Encrypt,
+      authSignEvent: identity.signEvent,
     });
 
     // Publish to wherever the seller actually said they read DMs (NIP-17
@@ -84,14 +125,10 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
     await Promise.any(getPool().publish(DEFAULT_RELAYS, toSelf));
   }
 
-  async function handlePlaceOrder() {
+  async function handlePlaceOrder(paymentMethod) {
     if (submittingRef.current) return; // already placing this order — ignore extra clicks
-    if (!isLoggedIn) {
-      setShowLogin(true);
-      return;
-    }
     if (!totalSats) {
-      setError("This item isn't priced in sats yet, so Lightning checkout isn't available for it.");
+      setError("This item isn't priced yet, so checkout isn't available for it.");
       setStatus("error");
       return;
     }
@@ -100,8 +137,13 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
       setStatus("error");
       return;
     }
-    if (!sellerProfile?.lud16) {
+    if (paymentMethod === "lightning" && !sellerProfile?.lud16) {
       setError("The seller doesn't have a Lightning address set up yet.");
+      setStatus("error");
+      return;
+    }
+    if (paymentMethod === "card" && !totalUsdCents) {
+      setError("Couldn't determine a USD price for card payment right now — try again in a moment.");
       setStatus("error");
       return;
     }
@@ -111,6 +153,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
     setError("");
 
     try {
+      const identity = await ensureIdentity();
       const newOrderId = crypto.randomUUID();
       setOrderId(newOrderId);
 
@@ -126,14 +169,19 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
       if (email.trim()) orderTags.push(["email", email.trim()]);
       if (shippingCoord) orderTags.push(["shipping", shippingCoord]);
 
-      await sendGiftWrapped({
-        kind: 16,
-        tags: orderTags,
-        content: notes.trim(),
-      });
+      await sendGiftWrapped(
+        {
+          kind: 16,
+          tags: orderTags,
+          content: notes.trim(),
+        },
+        identity
+      );
 
       // Email notification — a reliable fallback alongside the DM, since
       // not every Nostr client supports NIP-17 gift-wrapped messages yet.
+      // Especially important for guest checkout — it's their main durable
+      // record if they don't hang onto the guest key.
       fetch("/api/notify-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -142,13 +190,53 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
           itemTitle: listing.title,
           quantity,
           amountSats: totalSats,
-          buyerNpub: npub,
+          buyerNpub: identity.isGuest ? null : npub,
           buyerEmail: email.trim() || null,
           address: address.trim() || null,
           notes: notes.trim() || null,
         }),
       }).catch(() => {});
 
+      if (paymentMethod === "card") {
+        // Register the pending payment first (no verifyUrl — Stripe's
+        // webhook confirms this one directly, not the LUD-21 poller),
+        // then send the buyer to Stripe's hosted checkout. Same
+        // membership-tracking pipeline as Lightning from here on.
+        await fetch("/api/pending-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: newOrderId,
+            type: "purchase",
+            pubkey: identity.pubkey,
+            sellerPubkey,
+            invoice: `stripe:${newOrderId}`,
+            verifyUrl: null,
+            amountSats: totalSats,
+          }),
+        });
+
+        const origin = window.location.origin + window.location.pathname;
+        const res = await fetch("/api/create-checkout-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId: newOrderId,
+            itemTitle: listing.title,
+            amountUsdCents: totalUsdCents,
+            buyerEmail: email.trim() || null,
+            successUrl: `${origin}?stripe_success=1&order=${newOrderId}`,
+            cancelUrl: `${origin}?stripe_cancel=1`,
+          }),
+        });
+        const session = await res.json();
+        if (!session.url) throw new Error(session.error || "Couldn't start card checkout.");
+
+        window.location.href = session.url; // leaves the page — Stripe takes over from here
+        return;
+      }
+
+      // Lightning path
       const lnurlData = await resolveLud16(sellerProfile.lud16);
       const { pr, verify } = await requestPlainInvoice({
         callback: lnurlData.callback,
@@ -166,7 +254,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
         body: JSON.stringify({
           id: newOrderId,
           type: "purchase",
-          pubkey,
+          pubkey: identity.pubkey,
           sellerPubkey,
           invoice: pr,
           verifyUrl: verify,
@@ -202,17 +290,24 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
     setStatus("working");
     setError("");
     try {
-      await sendGiftWrapped({
-        kind: 17,
-        tags: [
-          ["p", sellerPubkey],
-          ["subject", "order-receipt"],
-          ["order", orderId],
-          ["payment", "lightning", invoice, ""],
-          ["amount", String(totalSats)],
-        ],
-        content: "Paid via Lightning.",
-      });
+      // By now, if this was a guest checkout, the context has already
+      // re-rendered with the guest identity from handlePlaceOrder — so
+      // this correctly reuses it rather than creating a second one.
+      const identity = await ensureIdentity();
+      await sendGiftWrapped(
+        {
+          kind: 17,
+          tags: [
+            ["p", sellerPubkey],
+            ["subject", "order-receipt"],
+            ["order", orderId],
+            ["payment", "lightning", invoice, ""],
+            ["amount", String(totalSats)],
+          ],
+          content: "Paid via Lightning.",
+        },
+        identity
+      );
 
       // Also tell our own backend directly — this is what actually
       // updates club membership stats. Best-effort: if this fails, the
@@ -280,6 +375,19 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
                   </p>
                 )}
               </div>
+
+              {!isLoggedIn && (
+                <p className="border border-ink/10 bg-ink/5 px-3 py-2 text-xs text-ink/60">
+                  No Nostr account needed — placing this order creates a
+                  one-time identity just for it, automatically.{" "}
+                  <button
+                    onClick={() => setShowLogin(true)}
+                    className="text-jade underline hover:text-ink"
+                  >
+                    Already have a Nostr identity? Log in instead
+                  </button>
+                </p>
+              )}
 
               <div>
                 <label className="block font-display text-xs tracking-widest text-ink/60">
@@ -369,13 +477,24 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
                 it.
               </p>
 
-              <button
-                onClick={handlePlaceOrder}
-                disabled={status === "working" || !totalSats}
-                className="w-full border-2 border-ink bg-ink px-4 py-3 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust disabled:opacity-50"
-              >
-                {status === "working" ? "PLACING ORDER…" : "PLACE ORDER & GET INVOICE"}
-              </button>
+              <div className="space-y-2">
+                <button
+                  onClick={() => handlePlaceOrder("lightning")}
+                  disabled={status === "working" || !totalSats}
+                  className="w-full border-2 border-ink bg-ink px-4 py-3 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust disabled:opacity-50"
+                >
+                  {status === "working" ? "PLACING ORDER…" : "⚡ PAY WITH LIGHTNING"}
+                </button>
+                <button
+                  onClick={() => handlePlaceOrder("card")}
+                  disabled={status === "working" || !totalUsdCents}
+                  className="w-full border-2 border-ink px-4 py-3 font-display text-sm tracking-widest text-ink transition hover:border-jade hover:text-jade disabled:opacity-50"
+                >
+                  {status === "working"
+                    ? "PLACING ORDER…"
+                    : `💳 PAY WITH CARD${totalUsdCents ? ` ($${(totalUsdCents / 100).toFixed(2)})` : ""}`}
+                </button>
+              </div>
             </div>
           )}
 
@@ -430,11 +549,37 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
               <p className="text-2xl">✓</p>
               <p>
                 Your payment confirmation has been sent to the seller.
-                They&rsquo;ll follow up with shipping details via Nostr DM.
+                They&rsquo;ll follow up with shipping details via Nostr DM
+                {email.trim() ? " and email" : ""}.
               </p>
               <p className="font-serif text-xs italic text-ink/50">
                 Order ID: {orderId}
               </p>
+
+              {guestNsec && (
+                <div className="border-2 border-ink/10 bg-ink/5 p-3 text-left text-xs">
+                  <p className="font-display tracking-widest text-ink/60">
+                    ABOUT YOUR ORDER IDENTITY
+                  </p>
+                  <p className="mt-1 text-ink/70">
+                    We created a one-time Nostr key just for this order, so
+                    you didn&rsquo;t need an account to buy. You don&rsquo;t
+                    need to do anything — we&rsquo;ll email you about your
+                    order{email.trim() ? "" : " if you left an email"}. If
+                    you&rsquo;d ever like to check for messages about this
+                    order yourself, this key can be imported into any
+                    Nostr app:
+                  </p>
+                  <textarea
+                    readOnly
+                    value={guestNsec}
+                    onFocus={(e) => e.target.select()}
+                    className="mt-2 w-full resize-none border-2 border-ink bg-white p-2 font-mono text-xs text-ink"
+                    rows={2}
+                  />
+                </div>
+              )}
+
               <button
                 onClick={onClose}
                 className="mt-2 w-full border-2 border-ink px-4 py-2 font-display text-sm tracking-widest text-ink hover:border-jade hover:text-jade"

@@ -432,6 +432,112 @@ async function handleRecomputeStats(env) {
   });
 }
 
+// ---------------------------------------------------------------------
+// Stripe (fiat checkout) — the order-creation DM and dashboard stay
+// identical regardless of payment rail; only settlement confirmation
+// differs. See confirmPayment() below, shared with the Lightning path.
+// ---------------------------------------------------------------------
+
+async function handleCreateCheckoutSession(request, env) {
+  if (!env.STRIPE_SECRET_KEY) {
+    return jsonResponse({ error: "Card payments aren't configured yet." }, 501);
+  }
+
+  const { orderId, itemTitle, amountUsdCents, buyerEmail, successUrl, cancelUrl } =
+    await request.json();
+
+  if (!orderId || !itemTitle || !amountUsdCents) {
+    return jsonResponse({ error: "Missing required fields." }, 422);
+  }
+
+  const params = new URLSearchParams();
+  params.set("mode", "payment");
+  params.set("success_url", successUrl);
+  params.set("cancel_url", cancelUrl);
+  params.set("line_items[0][quantity]", "1");
+  params.set("line_items[0][price_data][currency]", "usd");
+  params.set("line_items[0][price_data][unit_amount]", String(Math.round(amountUsdCents)));
+  params.set("line_items[0][price_data][product_data][name]", itemTitle);
+  params.set("metadata[order_id]", orderId);
+  if (buyerEmail) params.set("customer_email", buyerEmail);
+
+  const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: params.toString(),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    return jsonResponse({ error: `Stripe error: ${errText}` }, 502);
+  }
+
+  const session = await res.json();
+  return jsonResponse({ url: session.url, sessionId: session.id });
+}
+
+/** Verifies a Stripe webhook signature using Web Crypto (no Stripe SDK needed). */
+async function verifyStripeSignature(payload, signatureHeader, secret) {
+  const parts = Object.fromEntries(
+    signatureHeader.split(",").map((p) => p.split("="))
+  );
+  const timestamp = parts.t;
+  const expectedSig = parts.v1;
+  if (!timestamp || !expectedSig) return false;
+
+  const signedPayload = `${timestamp}.${payload}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signatureBuffer = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(signedPayload)
+  );
+  const computedSig = Array.from(new Uint8Array(signatureBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  return computedSig === expectedSig;
+}
+
+async function handleStripeWebhook(request, env) {
+  if (!env.STRIPE_WEBHOOK_SECRET) {
+    return jsonResponse({ error: "Webhook not configured." }, 501);
+  }
+
+  const payload = await request.text();
+  const signatureHeader = request.headers.get("stripe-signature");
+  if (!signatureHeader) return jsonResponse({ error: "Missing signature." }, 400);
+
+  const valid = await verifyStripeSignature(payload, signatureHeader, env.STRIPE_WEBHOOK_SECRET);
+  if (!valid) return jsonResponse({ error: "Invalid signature." }, 400);
+
+  const event = JSON.parse(payload);
+
+  if (event.type === "checkout.session.completed") {
+    const orderId = event.data.object.metadata?.order_id;
+    if (orderId) {
+      const raw = await env.SOUND_COFFEE_KV.get(`pending:${orderId}`);
+      if (raw) {
+        const payment = JSON.parse(raw);
+        if (payment.status === "pending") {
+          await confirmPayment(env, payment);
+        }
+      }
+    }
+  }
+
+  return jsonResponse({ received: true });
+}
+
 async function handleFetch(request, env) {
   const url = new URL(request.url);
 
@@ -446,6 +552,12 @@ async function handleFetch(request, env) {
   }
   if (request.method === "POST" && url.pathname === "/api/notify-order") {
     return handleNotifyOrder(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/create-checkout-session") {
+    return handleCreateCheckoutSession(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/stripe-webhook") {
+    return handleStripeWebhook(request, env);
   }
   if (request.method === "GET" && url.pathname === "/api/stats") {
     return handleStats(request, env);
