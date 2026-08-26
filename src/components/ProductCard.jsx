@@ -82,7 +82,7 @@ export default function ProductCard({ listing, sellerPubkey, allListings }) {
               ? variations.length === 0
                 ? "COMING SOON"
                 : "SELECT OPTIONS"
-              : "⚡ BUY WITH LIGHTNING"}
+              : "BUY BEANS"}
           </button>
         </div>
       </div>

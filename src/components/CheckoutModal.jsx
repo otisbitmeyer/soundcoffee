@@ -27,6 +27,17 @@ function satsFromSatsOrBtc(price) {
   return null;
 }
 
+// The Gamma spec's "address" tag is a single freeform string — no
+// separate city/state/zip fields exist on the wire. We still collect
+// them as distinct inputs for a much better checkout experience, and
+// combine them here into one clean string right before it goes into the
+// actual order message, so every other Gamma-compatible app can still
+// read it correctly.
+function formatAddress({ line1, line2, city, stateRegion, zip, country }) {
+  const line3 = [city, stateRegion, zip].filter(Boolean).join(", ");
+  return [line1, line2, line3, country].filter((s) => s && s.trim()).join("\n");
+}
+
 export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
   const { isLoggedIn, pubkey, npub, signEvent, nip44Encrypt, createGuestKeys } = useAuth();
   const { profile: sellerProfile } = useProfile(sellerPubkey);
@@ -34,7 +45,12 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
 
   const [showLogin, setShowLogin] = useState(false);
   const [quantity, setQuantity] = useState(1);
-  const [address, setAddress] = useState("");
+  const [addressLine1, setAddressLine1] = useState("");
+  const [addressLine2, setAddressLine2] = useState("");
+  const [city, setCity] = useState("");
+  const [stateRegion, setStateRegion] = useState("");
+  const [zip, setZip] = useState("");
+  const [country, setCountry] = useState("");
   const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState("form"); // form | working | invoice | done | error
@@ -125,6 +141,17 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
     await Promise.any(getPool().publish(DEFAULT_RELAYS, toSelf));
   }
 
+  // Combined into the single spec-compliant string wherever it's actually
+  // used for validation or sending.
+  const combinedAddress = formatAddress({
+    line1: addressLine1,
+    line2: addressLine2,
+    city,
+    stateRegion,
+    zip,
+    country,
+  });
+
   async function handlePlaceOrder(paymentMethod) {
     if (submittingRef.current) return; // already placing this order — ignore extra clicks
     if (!totalSats) {
@@ -132,7 +159,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
       setStatus("error");
       return;
     }
-    if (requiresShipping && !address.trim()) {
+    if (requiresShipping && !combinedAddress) {
       setError("This is a physical item — a shipping address is needed.");
       setStatus("error");
       return;
@@ -165,7 +192,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
         ["amount", String(totalSats)],
         ["item", listing.coordinate, String(quantity)],
       ];
-      if (address.trim()) orderTags.push(["address", address.trim()]);
+      if (combinedAddress) orderTags.push(["address", combinedAddress]);
       if (email.trim()) orderTags.push(["email", email.trim()]);
       if (shippingCoord) orderTags.push(["shipping", shippingCoord]);
 
@@ -192,7 +219,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
           amountSats: totalSats,
           buyerNpub: identity.isGuest ? null : npub,
           buyerEmail: email.trim() || null,
-          address: address.trim() || null,
+          address: combinedAddress || null,
           notes: notes.trim() || null,
         }),
       }).catch(() => {});
@@ -406,13 +433,48 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
                 <label className="block font-display text-xs tracking-widest text-ink/60">
                   SHIPPING ADDRESS{requiresShipping ? "" : " (OPTIONAL)"}
                 </label>
-                <textarea
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  rows={3}
-                  className="mt-1 w-full resize-none border-2 border-ink/30 px-3 py-2 font-serif text-sm text-ink focus:border-ink focus:outline-none"
-                  placeholder="Street, city, state, zip, country"
-                />
+                <div className="mt-1 space-y-2">
+                  <input
+                    value={addressLine1}
+                    onChange={(e) => setAddressLine1(e.target.value)}
+                    placeholder="Street address"
+                    className="w-full border-2 border-ink/30 px-3 py-2 font-serif text-sm text-ink focus:border-ink focus:outline-none"
+                  />
+                  <input
+                    value={addressLine2}
+                    onChange={(e) => setAddressLine2(e.target.value)}
+                    placeholder="Apt, suite, etc. (optional)"
+                    className="w-full border-2 border-ink/30 px-3 py-2 font-serif text-sm text-ink focus:border-ink focus:outline-none"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      placeholder="City"
+                      className="border-2 border-ink/30 px-3 py-2 font-serif text-sm text-ink focus:border-ink focus:outline-none"
+                    />
+                    <input
+                      value={stateRegion}
+                      onChange={(e) => setStateRegion(e.target.value)}
+                      placeholder="State / Region"
+                      className="border-2 border-ink/30 px-3 py-2 font-serif text-sm text-ink focus:border-ink focus:outline-none"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      value={zip}
+                      onChange={(e) => setZip(e.target.value)}
+                      placeholder="ZIP / Postal code"
+                      className="border-2 border-ink/30 px-3 py-2 font-serif text-sm text-ink focus:border-ink focus:outline-none"
+                    />
+                    <input
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value)}
+                      placeholder="Country"
+                      className="border-2 border-ink/30 px-3 py-2 font-serif text-sm text-ink focus:border-ink focus:outline-none"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -483,7 +545,9 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
                   disabled={status === "working" || !totalSats}
                   className="w-full border-2 border-ink bg-ink px-4 py-3 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust disabled:opacity-50"
                 >
-                  {status === "working" ? "PLACING ORDER…" : "⚡ PAY WITH LIGHTNING"}
+                  {status === "working"
+                    ? "PLACING ORDER…"
+                    : `⚡ PAY WITH LIGHTNING${totalSats ? ` (${totalSats.toLocaleString()} sats)` : ""}`}
                 </button>
                 <button
                   onClick={() => handlePlaceOrder("card")}

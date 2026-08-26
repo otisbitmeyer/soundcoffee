@@ -18,6 +18,7 @@ export default function Header() {
   const { profile } = useProfile(pubkey);
   const [modalOpen, setModalOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const menuRef = useRef(null);
 
   const displayName = profile?.display_name || profile?.name || shortNpub(npub);
@@ -53,6 +54,18 @@ export default function Header() {
             <Link href="/listening-lair" className="hover:text-rust">LISTEN</Link>
             <Link href="/#club" className="hover:text-rust">THE CLUB</Link>
           </nav>
+
+          <div className="flex items-center gap-3 sm:hidden">
+            <button
+              onClick={() => setMobileNavOpen((o) => !o)}
+              aria-label="Menu"
+              className="flex h-9 w-9 flex-col items-center justify-center gap-1.5 border-2 border-ink"
+            >
+              <span className="h-0.5 w-5 bg-ink" />
+              <span className="h-0.5 w-5 bg-ink" />
+              <span className="h-0.5 w-5 bg-ink" />
+            </button>
+          </div>
 
           {restoring ? (
             <div className="h-9 w-24" />
@@ -128,6 +141,32 @@ export default function Header() {
             </button>
           )}
         </div>
+
+        {mobileNavOpen && (
+          <nav className="flex flex-col border-t-2 border-ink font-display text-sm tracking-widest text-ink sm:hidden">
+            <Link
+              href="/#shop"
+              onClick={() => setMobileNavOpen(false)}
+              className="border-b border-ink/10 px-6 py-3 hover:bg-ink hover:text-paper"
+            >
+              SHOP
+            </Link>
+            <Link
+              href="/listening-lair"
+              onClick={() => setMobileNavOpen(false)}
+              className="border-b border-ink/10 px-6 py-3 hover:bg-ink hover:text-paper"
+            >
+              LISTEN
+            </Link>
+            <Link
+              href="/#club"
+              onClick={() => setMobileNavOpen(false)}
+              className="px-6 py-3 hover:bg-ink hover:text-paper"
+            >
+              THE CLUB
+            </Link>
+          </nav>
+        )}
       </header>
 
       {modalOpen && <LoginModal onClose={() => setModalOpen(false)} />}
