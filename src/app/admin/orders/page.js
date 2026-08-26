@@ -9,8 +9,20 @@ import { useAuth } from "@/context/AuthContext";
 import { useProfile } from "@/hooks/useProfile";
 import { useNip99Listings } from "@/hooks/useNip99Listings";
 import { unwrapGiftWrap } from "@/lib/nip17";
-import { DEFAULT_RELAYS } from "@/lib/relays";
+import { DEFAULT_RELAYS, getDmRelaysFor } from "@/lib/relays";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
+
+// A wider set than the site's usual DEFAULT_RELAYS — this search needs to
+// cast a much broader net, since an order could arrive from any app,
+// published to relays we'd have no other reason to know about.
+const EXTRA_SEARCH_RELAYS = [
+  "wss://relay.snort.social",
+  "wss://nostr.wine",
+  "wss://relay.nostr.bg",
+  "wss://offchain.pub",
+  "wss://relay.mostr.pub",
+  "wss://relay.nostrplebs.com",
+];
 
 function getTag(event, name) {
   return event.tags.find((t) => t[0] === name);
@@ -85,6 +97,7 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState(null);
   const [paidOrderIds, setPaidOrderIds] = useState(new Set());
   const [loadProgress, setLoadProgress] = useState(null);
+  const [relaysSearched, setRelaysSearched] = useState([]);
   const [error, setError] = useState(false);
 
   const isRightAccount = pubkey === SOUND_COFFEE_PUBKEY;
@@ -96,12 +109,24 @@ export default function OrdersPage() {
 
     async function load() {
       try {
+        // Check Sound Coffee's own declared DM inbox relays (NIP-17,
+        // kind 10050) first — if set, that's where well-behaved apps
+        // should actually be sending orders. Combine with our usual
+        // defaults and a wider pool of common relays, since we can't
+        // know in advance where every possible sender might have
+        // published instead.
+        const ownDmRelays = await getDmRelaysFor(SOUND_COFFEE_PUBKEY);
+        const searchRelays = [
+          ...new Set([...ownDmRelays, ...DEFAULT_RELAYS, ...EXTRA_SEARCH_RELAYS]),
+        ];
+        setRelaysSearched(searchRelays);
+
         const pool = new SimplePool();
-        const wraps = await pool.querySync(DEFAULT_RELAYS, {
+        const wraps = await pool.querySync(searchRelays, {
           kinds: [1059],
           "#p": [SOUND_COFFEE_PUBKEY],
         });
-        pool.close(DEFAULT_RELAYS);
+        pool.close(searchRelays);
 
         if (cancelled) return;
         setLoadProgress({ done: 0, total: wraps.length });
@@ -175,6 +200,23 @@ export default function OrdersPage() {
             <p className="mx-auto mt-10 max-w-sm border-2 border-rust bg-rust/10 p-4 text-center font-serif text-rust">
               You&rsquo;re logged in, but not as the Sound Coffee account.
             </p>
+          )}
+
+          {isRightAccount && relaysSearched.length > 0 && (
+            <details className="mx-auto mt-6 max-w-2xl border border-ink/20 p-3 text-center font-serif text-xs text-ink/50">
+              <summary className="cursor-pointer font-display tracking-widest">
+                RELAYS SEARCHED ({relaysSearched.length})
+              </summary>
+              <p className="mt-2 font-mono">{relaysSearched.join(", ")}</p>
+              <p className="mt-2 italic">
+                An order sent to a relay not in this list won&rsquo;t show
+                up here — there&rsquo;s no way to search every relay that
+                exists. If you know an order is missing, publishing your
+                own NIP-17 DM relay list (kind 10050) tells well-behaved
+                apps exactly where to send things, and we&rsquo;ll always
+                check there first.
+              </p>
+            </details>
           )}
 
           {isRightAccount && error && (
