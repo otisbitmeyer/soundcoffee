@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SimplePool } from "nostr-tools/pool";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import { useAuth } from "@/context/AuthContext";
 import { useProfile } from "@/hooks/useProfile";
+import { DEFAULT_RELAYS } from "@/lib/relays";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
 function shortNpub(pubkey) {
@@ -58,12 +60,17 @@ function MemberRow({ s }) {
 }
 
 export default function AdminPage() {
-  const { isLoggedIn, pubkey, restoring } = useAuth();
+  const { isLoggedIn, pubkey, signEvent, restoring } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
   const [recomputing, setRecomputing] = useState(false);
   const [recomputeResult, setRecomputeResult] = useState(null);
+
+  const [dmRelayStatus, setDmRelayStatus] = useState(null); // "checking" | "missing" | "set" | "publishing" | "done" | "error"
+  const [existingDmRelays, setExistingDmRelays] = useState([]);
+  const [paymentPrefStatus, setPaymentPrefStatus] = useState(null);
+  const [existingPaymentPref, setExistingPaymentPref] = useState(null);
 
   const isRightAccount = pubkey === SOUND_COFFEE_PUBKEY;
 
@@ -77,7 +84,92 @@ export default function AdminPage() {
   useEffect(() => {
     if (!isRightAccount) return;
     loadData();
+
+    // Check current merchant settings so we can show real status instead
+    // of guessing.
+    (async () => {
+      const pool = new SimplePool();
+      try {
+        setDmRelayStatus("checking");
+        setPaymentPrefStatus("checking");
+
+        const [relayListEvent, profileEvent] = await Promise.all([
+          pool.get(DEFAULT_RELAYS, { kinds: [10050], authors: [SOUND_COFFEE_PUBKEY] }),
+          pool.get(DEFAULT_RELAYS, { kinds: [0], authors: [SOUND_COFFEE_PUBKEY] }),
+        ]);
+
+        if (relayListEvent) {
+          const relays = relayListEvent.tags
+            .filter((t) => t[0] === "relay")
+            .map((t) => t[1]);
+          setExistingDmRelays(relays);
+          setDmRelayStatus("set");
+        } else {
+          setDmRelayStatus("missing");
+        }
+
+        if (profileEvent) {
+          const pref = profileEvent.tags.find((t) => t[0] === "payment_preference")?.[1];
+          setExistingPaymentPref(pref || "manual (default)");
+          setPaymentPrefStatus(pref === "lud16" ? "set" : "missing");
+        } else {
+          setPaymentPrefStatus("missing");
+        }
+      } finally {
+        pool.close(DEFAULT_RELAYS);
+      }
+    })();
   }, [isRightAccount]);
+
+  async function handlePublishDmRelays() {
+    setDmRelayStatus("publishing");
+    try {
+      const template = {
+        kind: 10050,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: DEFAULT_RELAYS.map((url) => ["relay", url]),
+        content: "",
+      };
+      const signed = await signEvent(template);
+      const pool = new SimplePool();
+      await Promise.any(pool.publish(DEFAULT_RELAYS, signed));
+      pool.close(DEFAULT_RELAYS);
+      setExistingDmRelays(DEFAULT_RELAYS);
+      setDmRelayStatus("done");
+    } catch {
+      setDmRelayStatus("error");
+    }
+  }
+
+  async function handleSetPaymentPreference() {
+    setPaymentPrefStatus("publishing");
+    try {
+      const pool = new SimplePool();
+      const currentProfile = await pool.get(DEFAULT_RELAYS, {
+        kinds: [0],
+        authors: [SOUND_COFFEE_PUBKEY],
+      });
+
+      const preservedTags = (currentProfile?.tags || []).filter(
+        (t) => t[0] !== "payment_preference"
+      );
+      const template = {
+        kind: 0,
+        created_at: Math.floor(Date.now() / 1000),
+        // Content (name, picture, lud16, etc.) MUST be preserved exactly
+        // — kind 0 is your whole profile, not just this one setting.
+        content: currentProfile?.content || "{}",
+        tags: [...preservedTags, ["payment_preference", "lud16"]],
+      };
+      const signed = await signEvent(template);
+      await Promise.any(pool.publish(DEFAULT_RELAYS, signed));
+      pool.close(DEFAULT_RELAYS);
+      setExistingPaymentPref("lud16");
+      setPaymentPrefStatus("done");
+    } catch {
+      setPaymentPrefStatus("error");
+    }
+  }
 
   async function handleRecompute() {
     setRecomputing(true);
@@ -132,6 +224,73 @@ export default function AdminPage() {
             <p className="mt-10 text-center font-serif italic text-ink/50">
               Couldn&rsquo;t load member data right now.
             </p>
+          )}
+
+          {isRightAccount && (
+            <div className="mx-auto mt-10 max-w-2xl border-2 border-ink/20 p-5">
+              <h2 className="font-display text-lg tracking-wide text-ink">
+                MERCHANT SETTINGS
+              </h2>
+              <p className="mt-1 mb-4 font-serif text-sm text-ink/60">
+                These make order delivery and payment processing more
+                reliable for buyers using any Gamma-compatible app, not
+                just this site.
+              </p>
+
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ink/10 pt-4">
+                  <div>
+                    <p className="font-display text-sm text-ink">DM Relay List</p>
+                    <p className="font-serif text-xs text-ink/60">
+                      {dmRelayStatus === "checking" && "Checking…"}
+                      {dmRelayStatus === "missing" &&
+                        "Not set — apps are guessing where to send orders."}
+                      {(dmRelayStatus === "set" || dmRelayStatus === "done") &&
+                        `Set: ${existingDmRelays.join(", ")}`}
+                      {dmRelayStatus === "error" && "Something went wrong."}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handlePublishDmRelays}
+                    disabled={dmRelayStatus === "publishing"}
+                    className="shrink-0 border-2 border-ink px-4 py-2 font-display text-xs tracking-widest text-ink hover:border-jade hover:text-jade disabled:opacity-50"
+                  >
+                    {dmRelayStatus === "publishing"
+                      ? "PUBLISHING…"
+                      : dmRelayStatus === "done" || dmRelayStatus === "set"
+                      ? "REPUBLISH"
+                      : "PUBLISH"}
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ink/10 pt-4">
+                  <div>
+                    <p className="font-display text-sm text-ink">
+                      Payment Preference
+                    </p>
+                    <p className="font-serif text-xs text-ink/60">
+                      {paymentPrefStatus === "checking" && "Checking…"}
+                      {paymentPrefStatus === "missing" &&
+                        `Currently: ${existingPaymentPref} — apps may wait for you to manually respond instead of paying instantly.`}
+                      {(paymentPrefStatus === "set" || paymentPrefStatus === "done") &&
+                        "Set to lud16 — apps can pay instantly via your Lightning address."}
+                      {paymentPrefStatus === "error" && "Something went wrong."}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleSetPaymentPreference}
+                    disabled={paymentPrefStatus === "publishing"}
+                    className="shrink-0 border-2 border-ink px-4 py-2 font-display text-xs tracking-widest text-ink hover:border-jade hover:text-jade disabled:opacity-50"
+                  >
+                    {paymentPrefStatus === "publishing"
+                      ? "PUBLISHING…"
+                      : paymentPrefStatus === "done" || paymentPrefStatus === "set"
+                      ? "✓ SET"
+                      : "SET TO LIGHTNING"}
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
           {isRightAccount && data && (
