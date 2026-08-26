@@ -96,13 +96,40 @@ export function AuthProvider({ children }) {
   // either a "bunker://..." connection string or an nsec.app-style
   // NIP-05 identifier. The actual private key never touches this site —
   // it stays on the signer device the whole time.
+  // NIP-46 remote signer login (e.g. Amber on Android). `bunkerInput` is
+  // either a "bunker://..." connection string or an nsec.app-style
+  // NIP-05 identifier. The actual private key never touches this site —
+  // it stays on the signer device the whole time.
+  //
+  // The underlying library has NO built-in timeout on connect() — if the
+  // remote signer never responds (wrong relay, app not open, notification
+  // missed, etc.) it just hangs forever with no error at all. We wrap it
+  // in our own timeout so a failed connection actually surfaces as an
+  // error instead of silently doing nothing.
   const loginWithBunker = useCallback(async (bunkerInput) => {
     const bp = await parseBunkerInput(bunkerInput.trim());
     if (!bp) throw new Error("Couldn't understand that connection string.");
     const clientSecretKey = generateSecretKey();
     const signer = BunkerSigner.fromBunker(clientSecretKey, bp);
-    await signer.connect();
-    const pk = await signer.getPublicKey();
+
+    function withTimeout(promise, ms, message) {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+      ]);
+    }
+
+    await withTimeout(
+      signer.connect(),
+      60000,
+      "No response from your signer app after 60 seconds. Make sure it's open and check for an approval prompt, then try again."
+    );
+    const pk = await withTimeout(
+      signer.getPublicKey(),
+      20000,
+      "Connected, but didn't get a response for your public key. Try again."
+    );
+
     bunkerSignerRef.current = signer;
     setPubkey(pk);
     setSecretKey(null);

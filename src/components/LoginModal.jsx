@@ -149,10 +149,19 @@ export default function LoginModal({ onClose }) {
                 {connecting ? "CONNECTING…" : "CONNECT"}
               </button>
               {connecting && (
-                <p className="text-xs italic text-ink/50">
-                  Check your phone &mdash; Amber may be waiting for you to
-                  approve the connection.
-                </p>
+                <div className="space-y-2">
+                  <p className="text-xs italic text-ink/50">
+                    Check your phone &mdash; Amber may be waiting for you
+                    to approve the connection. This can take up to a
+                    minute.
+                  </p>
+                  <button
+                    onClick={() => setConnecting(false)}
+                    className="font-display text-xs tracking-widest text-rust hover:text-ink"
+                  >
+                    CANCEL
+                  </button>
+                </div>
               )}
             </div>
           )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import QRCode from "qrcode";
 import { SimplePool } from "nostr-tools/pool";
 import { useAuth } from "@/context/AuthContext";
@@ -45,10 +46,28 @@ export default function ZapModal({
   const pollRef = useRef(null);
 
   const effectiveAmount = customAmount ? Number(customAmount) : amount;
+  const pathname = usePathname();
+  const initialPathnameRef = useRef(pathname);
 
   useEffect(() => {
     return () => clearInterval(pollRef.current);
   }, []);
+
+  // Close automatically once payment is confirmed — after a few seconds
+  // to actually read it, or immediately if they navigate elsewhere
+  // (including same-page hash links, which don't unmount this component
+  // on their own).
+  useEffect(() => {
+    if (status !== "paid") return;
+    const timer = setTimeout(() => onClose?.(), 6000);
+    return () => clearTimeout(timer);
+  }, [status, onClose]);
+
+  useEffect(() => {
+    if (pathname !== initialPathnameRef.current) {
+      onClose?.();
+    }
+  }, [pathname, onClose]);
 
   // Publishes a real Nostr note, signed by the ZAPPER (not the show),
   // announcing that they boosted — following the same convention Fountain
