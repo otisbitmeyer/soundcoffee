@@ -202,6 +202,7 @@ export default function OrdersPage() {
   const [loadProgress, setLoadProgress] = useState(null);
   const [relaysSearched, setRelaysSearched] = useState([]);
   const [error, setError] = useState(false);
+  const [showAllOrders, setShowAllOrders] = useState(false); // default: paid-only
 
   const isRightAccount = pubkey === SOUND_COFFEE_PUBKEY;
   const { allListings } = useNip99Listings(SOUND_COFFEE_PUBKEY);
@@ -392,11 +393,38 @@ export default function OrdersPage() {
 
           {isRightAccount && orders !== null && (
             <div className="mt-10 overflow-x-auto">
-              {orders.length === 0 ? (
-                <p className="text-center font-serif italic text-ink/50">
-                  No orders yet.
-                </p>
-              ) : (
+              <div className="mb-4 flex items-center justify-between">
+                <label className="flex items-center gap-2 font-display text-xs tracking-widest text-ink/60">
+                  <input
+                    type="checkbox"
+                    checked={showAllOrders}
+                    onChange={(e) => setShowAllOrders(e.target.checked)}
+                  />
+                  SHOW UNPAID ORDERS TOO
+                </label>
+                <span className="font-serif text-xs italic text-ink/40">
+                  {orders.filter((o) => paidOrderIds.has(o.orderId)).length} paid
+                  {showAllOrders &&
+                    ` · ${orders.length - orders.filter((o) => paidOrderIds.has(o.orderId)).length} unpaid hidden by default`}
+                </span>
+              </div>
+
+              {(() => {
+                const visibleOrders = showAllOrders
+                  ? orders
+                  : orders.filter((o) => paidOrderIds.has(o.orderId));
+
+                if (visibleOrders.length === 0) {
+                  return (
+                    <p className="text-center font-serif italic text-ink/50">
+                      {showAllOrders
+                        ? "No orders yet."
+                        : "No paid orders yet — check \"show unpaid orders too\" to see orders still awaiting payment."}
+                    </p>
+                  );
+                }
+
+                return (
                 <table className="w-full border-collapse text-left font-serif text-sm">
                   <thead>
                     <tr className="border-b-2 border-ink font-display text-xs tracking-widest text-ink/60">
@@ -410,7 +438,7 @@ export default function OrdersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {orders.map((order) => {
+                    {visibleOrders.map((order) => {
                       const isOpen = expandedOrderId === order.orderId;
                       const msgCount = messagesByOrder[order.orderId]?.length || 0;
                       return (
@@ -464,7 +492,8 @@ export default function OrdersPage() {
                     })}
                   </tbody>
                 </table>
-              )}
+                );
+              })()}
             </div>
           )}
         </div>
