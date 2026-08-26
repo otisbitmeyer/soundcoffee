@@ -255,6 +255,25 @@ export default function OrdersPage() {
 
         if (cancelled) return;
         foundOrders.sort((a, b) => b.createdAt - a.createdAt);
+
+        // Flag (never hide) likely duplicates — same buyer, same items,
+        // same amount, placed within a couple minutes of each other. Most
+        // often caused by a double-click before the button disabled
+        // itself. Left for you to judge, not silently removed.
+        const itemsKey = (o) => o.items.map((i) => `${i.coordinate}:${i.quantity}`).join("|");
+        for (let i = 0; i < foundOrders.length; i++) {
+          const a = foundOrders[i];
+          a.possibleDuplicate = foundOrders.some((b, j) => {
+            if (j === i) return false;
+            return (
+              b.buyerPubkey === a.buyerPubkey &&
+              b.amountSats === a.amountSats &&
+              itemsKey(b) === itemsKey(a) &&
+              Math.abs(b.createdAt - a.createdAt) < 120
+            );
+          });
+        }
+
         for (const id in foundMessages) {
           foundMessages[id].sort((a, b) => a.createdAt - b.createdAt);
         }
@@ -404,6 +423,11 @@ export default function OrdersPage() {
                           >
                             <td className="py-3 pr-4 text-xs text-ink/50">
                               {new Date(order.createdAt * 1000).toLocaleDateString()}
+                              {order.possibleDuplicate && (
+                                <div className="mt-1 inline-block border border-rust px-1.5 py-0.5 text-[10px] font-display tracking-widest text-rust">
+                                  ⚠ POSSIBLE DUPLICATE
+                                </div>
+                              )}
                             </td>
                             <td className="py-3 pr-4">
                               <BuyerName pubkey={order.buyerPubkey} />

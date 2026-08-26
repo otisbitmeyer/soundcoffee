@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import QRCode from "qrcode";
 import { SimplePool } from "nostr-tools/pool";
 import { useAuth } from "@/context/AuthContext";
@@ -42,6 +42,11 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
   const [orderId, setOrderId] = useState(null);
   const [brantaLink, setBrantaLink] = useState(null);
 
+  // A React state check alone isn't fast enough to stop a very quick
+  // double-click — the button doesn't actually disable until after a
+  // re-render. This ref updates synchronously, so it can't be raced.
+  const submittingRef = useRef(false);
+
   const shippingCoord = listing.shippingOptionCoords?.[0] || null;
   const { option: shippingOption, loading: shippingLoading } = useShippingOption(shippingCoord);
 
@@ -80,6 +85,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
   }
 
   async function handlePlaceOrder() {
+    if (submittingRef.current) return; // already placing this order — ignore extra clicks
     if (!isLoggedIn) {
       setShowLogin(true);
       return;
@@ -100,6 +106,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
       return;
     }
 
+    submittingRef.current = true;
     setStatus("working");
     setError("");
 
@@ -186,6 +193,8 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
     } catch (e) {
       setError(e.message || "Something went wrong placing the order.");
       setStatus("error");
+    } finally {
+      submittingRef.current = false;
     }
   }
 
