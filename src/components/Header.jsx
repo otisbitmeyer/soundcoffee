@@ -92,6 +92,13 @@ export default function Header() {
                         NEW LISTING
                       </Link>
                       <Link
+                        href="/admin/orders"
+                        onClick={() => setMenuOpen(false)}
+                        className="block border-t border-ink/10 px-4 py-3 text-ink hover:bg-ink hover:text-paper"
+                      >
+                        ORDERS
+                      </Link>
+                      <Link
                         href="/admin"
                         onClick={() => setMenuOpen(false)}
                         className="block border-t border-ink/10 px-4 py-3 text-ink hover:bg-ink hover:text-paper"

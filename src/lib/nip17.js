@@ -66,6 +66,20 @@ export async function giftWrap({
 }
 
 /**
+ * Unwraps a gift-wrapped (kind 1059) event back down to the real rumor
+ * inside it, using the logged-in user's own decrypt capability (works
+ * the same regardless of extension/bunker/local key). This is what
+ * makes the order dashboard possible — reading order DMs sent to Sound
+ * Coffee, however they got there.
+ */
+export async function unwrapGiftWrap(wrappedEvent, authNip44Decrypt) {
+  const sealJson = await authNip44Decrypt(wrappedEvent.pubkey, wrappedEvent.content);
+  const seal = JSON.parse(sealJson);
+  const rumorJson = await authNip44Decrypt(seal.pubkey, seal.content);
+  const rumor = JSON.parse(rumorJson);
+  return rumor;
+}
+/**
  * Gift-wraps the same message twice: once for the recipient, once for the
  * sender's own pubkey (so it shows up in the sender's own "sent" history
  * across any NIP-17-aware client) — standard NIP-17 practice.

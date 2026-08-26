@@ -96,6 +96,14 @@ export default function VariantPicker({ parentListing, variations, onSelect, onC
 
           {matchedVariation && (
             <div className="border-t-2 border-ink/10 pt-4">
+              {matchedVariation.images[0] && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={matchedVariation.images[0]}
+                  alt={matchedVariation.title}
+                  className="mb-3 h-40 w-full border-2 border-ink/20 object-cover"
+                />
+              )}
               <p className="font-display text-lg text-rust">
                 {formatPrice(matchedVariation.price)}
               </p>

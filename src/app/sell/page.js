@@ -4,6 +4,7 @@ import { useState } from "react";
 import { SimplePool } from "nostr-tools/pool";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
+import ImageUploadField from "@/components/ImageUploadField";
 import { useAuth } from "@/context/AuthContext";
 import { DEFAULT_RELAYS } from "@/lib/relays";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
@@ -20,7 +21,7 @@ function slugify(text) {
 
 let nextRowId = 1;
 function newVariationRow() {
-  return { id: nextRowId++, size: "", color: "", price: "", stock: "" };
+  return { id: nextRowId++, size: "", color: "", price: "", stock: "", image: "" };
 }
 
 export default function SellPage() {
@@ -32,7 +33,8 @@ export default function SellPage() {
   const [description, setDescription] = useState("");
   const [priceAmount, setPriceAmount] = useState("");
   const [priceCurrency, setPriceCurrency] = useState("sats");
-  const [images, setImages] = useState("");
+  const [primaryImage, setPrimaryImage] = useState("");
+  const [extraImageUrls, setExtraImageUrls] = useState("");
   const [format, setFormat] = useState("physical");
 
   // Variations (e.g. t-shirt sizes/colors) — Gamma spec's variable/
@@ -107,10 +109,10 @@ export default function SellPage() {
 
     try {
       const dTag = `${slugify(title)}-${Date.now()}`;
-      const imageUrls = images
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean);
+      const defaultImageUrls = [
+        primaryImage,
+        ...extraImageUrls.split("\n").map((s) => s.trim()).filter(Boolean),
+      ].filter(Boolean);
       const pool = new SimplePool();
 
       // Shipping option — published once, referenced by the parent and
@@ -140,7 +142,6 @@ export default function SellPage() {
         ["status", "active"],
       ];
       if (summary.trim()) baseTags.push(["summary", summary.trim()]);
-      for (const url of imageUrls) baseTags.push(["image", url]);
       if (shippingTag) baseTags.push(shippingTag);
 
       if (hasVariations) {
@@ -150,16 +151,19 @@ export default function SellPage() {
         const lowest = Math.min(...validVariations.map((v) => Number(v.price)));
         const parentCoordinate = `30402:${pubkey}:${dTag}`;
 
+        const parentTags = [
+          ["d", dTag],
+          ["title", title.trim()],
+          ["price", String(lowest), priceCurrency],
+          ["type", "variable", format],
+          ...baseTags,
+        ];
+        for (const url of defaultImageUrls) parentTags.push(["image", url]);
+
         const parentTemplate = {
           kind: 30402,
           created_at: Math.floor(Date.now() / 1000),
-          tags: [
-            ["d", dTag],
-            ["title", title.trim()],
-            ["price", String(lowest), priceCurrency],
-            ["type", "variable", format],
-            ...baseTags,
-          ],
+          tags: parentTags,
           content: description.trim(),
         };
         const signedParent = await signEvent(parentTemplate);
@@ -179,6 +183,10 @@ export default function SellPage() {
           if (v.size.trim()) tags.push(["spec", "size", v.size.trim()]);
           if (v.color.trim()) tags.push(["spec", "color", v.color.trim()]);
           if (v.stock) tags.push(["stock", v.stock]);
+          // A variation with its own photo uses that; otherwise it falls
+          // back to the product's default image(s).
+          const variantImages = v.image ? [v.image] : defaultImageUrls;
+          for (const url of variantImages) tags.push(["image", url]);
 
           const variantTemplate = {
             kind: 30402,
@@ -192,16 +200,19 @@ export default function SellPage() {
 
         setPublishedEventId(signedParent.id);
       } else {
+        const tags = [
+          ["d", dTag],
+          ["title", title.trim()],
+          ["price", priceAmount, priceCurrency],
+          ["type", "simple", format],
+          ...baseTags,
+        ];
+        for (const url of defaultImageUrls) tags.push(["image", url]);
+
         const template = {
           kind: 30402,
           created_at: Math.floor(Date.now() / 1000),
-          tags: [
-            ["d", dTag],
-            ["title", title.trim()],
-            ["price", priceAmount, priceCurrency],
-            ["type", "simple", format],
-            ...baseTags,
-          ],
+          tags,
           content: description.trim(),
         };
         const signed = await signEvent(template);
@@ -221,7 +232,8 @@ export default function SellPage() {
     setSummary("");
     setDescription("");
     setPriceAmount("");
-    setImages("");
+    setPrimaryImage("");
+    setExtraImageUrls("");
     setShipPrice("");
     setHasVariations(false);
     setVariations([newVariationRow(), newVariationRow()]);
@@ -359,38 +371,44 @@ export default function SellPage() {
                   </div>
                   <p className="mt-1 mb-3 text-xs italic text-ink/50">
                     One row per size/color combo you actually sell. Leave
-                    either field blank if it doesn&rsquo;t apply (e.g. only
-                    sizes, no colors).
+                    either field blank if it doesn&rsquo;t apply. Upload a
+                    photo per row for a color-specific picture — leave it
+                    blank to use the product&rsquo;s default photo.
                   </p>
 
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {variations.map((v) => (
-                      <div key={v.id} className="flex items-center gap-2">
+                      <div key={v.id} className="flex items-center gap-2 border-b border-ink/10 pb-3 last:border-b-0">
+                        <ImageUploadField
+                          value={v.image}
+                          onChange={(url) => updateVariation(v.id, "image", url)}
+                          compact
+                        />
                         <input
                           value={v.size}
                           onChange={(e) => updateVariation(v.id, "size", e.target.value)}
                           placeholder="Size (M)"
-                          className="w-20 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
+                          className="w-16 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
                         />
                         <input
                           value={v.color}
                           onChange={(e) => updateVariation(v.id, "color", e.target.value)}
                           placeholder="Color (Black)"
-                          className="w-24 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
+                          className="w-20 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
                         />
                         <input
                           type="number"
                           value={v.price}
                           onChange={(e) => updateVariation(v.id, "price", e.target.value)}
                           placeholder="Price"
-                          className="w-20 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
+                          className="w-16 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
                         />
                         <input
                           type="number"
                           value={v.stock}
                           onChange={(e) => updateVariation(v.id, "stock", e.target.value)}
-                          placeholder="Stock (optional)"
-                          className="w-28 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
+                          placeholder="Stock"
+                          className="w-16 border-2 border-ink/30 px-2 py-1.5 text-sm focus:border-ink focus:outline-none"
                         />
                         <button
                           onClick={() => removeVariationRow(v.id)}
@@ -414,19 +432,23 @@ export default function SellPage() {
 
               <div>
                 <label className="block font-display text-xs tracking-widest text-ink/60">
-                  IMAGE URLS (one per line, shared across all variations)
+                  {hasVariations ? "DEFAULT PHOTO (used if a variation has none)" : "PHOTO"}
                 </label>
+                <div className="mt-1">
+                  <ImageUploadField value={primaryImage} onChange={setPrimaryImage} />
+                </div>
+                <p className="mt-2 text-xs italic text-ink/50">
+                  Uploads straight to nostr.build. Have extra photos
+                  already hosted elsewhere? Paste more URLs below, one per
+                  line.
+                </p>
                 <textarea
-                  value={images}
-                  onChange={(e) => setImages(e.target.value)}
+                  value={extraImageUrls}
+                  onChange={(e) => setExtraImageUrls(e.target.value)}
                   rows={2}
-                  className="mt-1 w-full resize-none border-2 border-ink/30 px-3 py-2 font-mono text-xs focus:border-ink focus:outline-none"
+                  className="mt-2 w-full resize-none border-2 border-ink/30 px-3 py-2 font-mono text-xs focus:border-ink focus:outline-none"
                   placeholder="https://..."
                 />
-                <p className="mt-1 text-xs italic text-ink/50">
-                  Needs to be a URL to an already-hosted image. This form
-                  doesn&rsquo;t upload files itself yet.
-                </p>
               </div>
 
               <div>

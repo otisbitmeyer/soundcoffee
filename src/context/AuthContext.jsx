@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { generateSecretKey, getPublicKey, finalizeEvent } from "nostr-tools/pure";
 import { nsecEncode, npubEncode, decode } from "nostr-tools/nip19";
-import { getConversationKey, encrypt as nip44EncryptRaw } from "nostr-tools/nip44";
+import { getConversationKey, encrypt as nip44EncryptRaw, decrypt as nip44DecryptRaw } from "nostr-tools/nip44";
 import { BunkerSigner, parseBunkerInput } from "nostr-tools/nip46";
 
 const AuthContext = createContext(null);
@@ -178,6 +178,30 @@ export function AuthProvider({ children }) {
     [pubkey, method, secretKey]
   );
 
+  // The inverse of nip44Encrypt — needed to read incoming encrypted
+  // messages (like NIP-17 order DMs), not just send them.
+  const nip44Decrypt = useCallback(
+    async (senderPubkey, ciphertext) => {
+      if (!pubkey) throw new Error("Not logged in.");
+      if (method === "extension") {
+        if (!window.nostr?.nip44?.decrypt) {
+          throw new Error(
+            "This extension doesn't support encrypted messages (NIP-44) yet."
+          );
+        }
+        return window.nostr.nip44.decrypt(senderPubkey, ciphertext);
+      }
+      if (method === "bunker") {
+        if (!bunkerSignerRef.current) throw new Error("Remote signer not connected.");
+        return bunkerSignerRef.current.nip44Decrypt(senderPubkey, ciphertext);
+      }
+      if (!secretKey) throw new Error("No key available to decrypt with.");
+      const conversationKey = getConversationKey(secretKey, senderPubkey);
+      return nip44DecryptRaw(ciphertext, conversationKey);
+    },
+    [pubkey, method, secretKey]
+  );
+
   return (
     <AuthContext.Provider
       value={{
@@ -194,6 +218,7 @@ export function AuthProvider({ children }) {
         logout,
         signEvent,
         nip44Encrypt,
+        nip44Decrypt,
       }}
     >
       {children}
