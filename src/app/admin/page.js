@@ -68,7 +68,8 @@ export default function AdminPage() {
   const [recomputeResult, setRecomputeResult] = useState(null);
 
   const [dmRelayStatus, setDmRelayStatus] = useState(null); // "checking" | "missing" | "set" | "publishing" | "done" | "error"
-  const [existingDmRelays, setExistingDmRelays] = useState([]);
+  const [dmRelayList, setDmRelayList] = useState(DEFAULT_RELAYS); // editable list
+  const [newRelayInput, setNewRelayInput] = useState("");
   const [paymentPrefStatus, setPaymentPrefStatus] = useState(null);
   const [existingPaymentPref, setExistingPaymentPref] = useState(null);
 
@@ -102,7 +103,7 @@ export default function AdminPage() {
           const relays = relayListEvent.tags
             .filter((t) => t[0] === "relay")
             .map((t) => t[1]);
-          setExistingDmRelays(relays);
+          setDmRelayList(relays.length > 0 ? relays : DEFAULT_RELAYS);
           setDmRelayStatus("set");
         } else {
           setDmRelayStatus("missing");
@@ -121,20 +122,38 @@ export default function AdminPage() {
     })();
   }, [isRightAccount]);
 
+  function addRelay() {
+    let url = newRelayInput.trim();
+    if (!url) return;
+    if (!url.startsWith("wss://") && !url.startsWith("ws://")) url = `wss://${url}`;
+    if (!dmRelayList.includes(url)) setDmRelayList((list) => [...list, url]);
+    setNewRelayInput("");
+  }
+
+  function removeRelay(url) {
+    setDmRelayList((list) => list.filter((r) => r !== url));
+  }
+
   async function handlePublishDmRelays() {
+    if (dmRelayList.length === 0) {
+      setDmRelayStatus("error");
+      return;
+    }
     setDmRelayStatus("publishing");
     try {
       const template = {
         kind: 10050,
         created_at: Math.floor(Date.now() / 1000),
-        tags: DEFAULT_RELAYS.map((url) => ["relay", url]),
+        tags: dmRelayList.map((url) => ["relay", url]),
         content: "",
       };
       const signed = await signEvent(template);
       const pool = new SimplePool();
-      await Promise.any(pool.publish(DEFAULT_RELAYS, signed));
-      pool.close(DEFAULT_RELAYS);
-      setExistingDmRelays(DEFAULT_RELAYS);
+      // Publish to the new list itself plus our known defaults, so the
+      // update is discoverable even from relays not on the new list.
+      const publishTo = [...new Set([...dmRelayList, ...DEFAULT_RELAYS])];
+      await Promise.any(pool.publish(publishTo, signed));
+      pool.close(publishTo);
       setDmRelayStatus("done");
     } catch {
       setDmRelayStatus("error");
@@ -238,29 +257,72 @@ export default function AdminPage() {
               </p>
 
               <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ink/10 pt-4">
-                  <div>
+                <div className="border-t border-ink/10 pt-4">
+                  <div className="flex items-center justify-between">
                     <p className="font-display text-sm text-ink">DM Relay List</p>
-                    <p className="font-serif text-xs text-ink/60">
-                      {dmRelayStatus === "checking" && "Checking…"}
-                      {dmRelayStatus === "missing" &&
-                        "Not set — apps are guessing where to send orders."}
-                      {(dmRelayStatus === "set" || dmRelayStatus === "done") &&
-                        `Set: ${existingDmRelays.join(", ")}`}
-                      {dmRelayStatus === "error" && "Something went wrong."}
-                    </p>
+                    <button
+                      onClick={handlePublishDmRelays}
+                      disabled={dmRelayStatus === "publishing"}
+                      className="shrink-0 border-2 border-ink px-4 py-2 font-display text-xs tracking-widest text-ink hover:border-jade hover:text-jade disabled:opacity-50"
+                    >
+                      {dmRelayStatus === "publishing"
+                        ? "PUBLISHING…"
+                        : dmRelayStatus === "done"
+                        ? "✓ PUBLISHED"
+                        : dmRelayStatus === "set"
+                        ? "REPUBLISH"
+                        : "PUBLISH"}
+                    </button>
                   </div>
-                  <button
-                    onClick={handlePublishDmRelays}
-                    disabled={dmRelayStatus === "publishing"}
-                    className="shrink-0 border-2 border-ink px-4 py-2 font-display text-xs tracking-widest text-ink hover:border-jade hover:text-jade disabled:opacity-50"
-                  >
-                    {dmRelayStatus === "publishing"
-                      ? "PUBLISHING…"
-                      : dmRelayStatus === "done" || dmRelayStatus === "set"
-                      ? "REPUBLISH"
-                      : "PUBLISH"}
-                  </button>
+                  <p className="mt-1 font-serif text-xs text-ink/60">
+                    {dmRelayStatus === "checking" && "Checking…"}
+                    {dmRelayStatus === "missing" &&
+                      "Not published yet — apps are guessing where to send orders."}
+                    {dmRelayStatus === "error" && "Something went wrong."}
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {dmRelayList.map((url) => (
+                      <span
+                        key={url}
+                        className="flex items-center gap-1.5 border border-ink/30 px-2 py-1 font-mono text-xs text-ink"
+                      >
+                        {url}
+                        <button
+                          onClick={() => removeRelay(url)}
+                          className="text-rust hover:text-ink"
+                          aria-label={`Remove ${url}`}
+                        >
+                          &times;
+                        </button>
+                      </span>
+                    ))}
+                    {dmRelayList.length === 0 && (
+                      <span className="font-serif text-xs italic text-rust">
+                        No relays — add at least one before publishing.
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-3 flex gap-2">
+                    <input
+                      value={newRelayInput}
+                      onChange={(e) => setNewRelayInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && addRelay()}
+                      placeholder="relay.example.com"
+                      className="flex-1 border-2 border-ink/30 px-2 py-1.5 font-mono text-xs focus:border-ink focus:outline-none"
+                    />
+                    <button
+                      onClick={addRelay}
+                      className="border-2 border-ink/30 px-3 py-1.5 font-display text-xs text-ink hover:border-ink"
+                    >
+                      + ADD
+                    </button>
+                  </div>
+                  <p className="mt-2 font-serif text-xs italic text-ink/50">
+                    Changes here only take effect once you click Publish
+                    &mdash; adding/removing above is just editing the draft.
+                  </p>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ink/10 pt-4">

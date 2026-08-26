@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import { SimplePool } from "nostr-tools/pool";
 import { nip19 } from "nostr-tools";
 import Header from "@/components/Header";
@@ -8,7 +8,7 @@ import LoginModal from "@/components/LoginModal";
 import { useAuth } from "@/context/AuthContext";
 import { useProfile } from "@/hooks/useProfile";
 import { useNip99Listings } from "@/hooks/useNip99Listings";
-import { unwrapGiftWrap } from "@/lib/nip17";
+import { unwrapGiftWrap, giftWrapForBoth } from "@/lib/nip17";
 import { DEFAULT_RELAYS, getDmRelaysFor } from "@/lib/relays";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
@@ -24,15 +24,16 @@ const EXTRA_SEARCH_RELAYS = [
   "wss://relay.nostrplebs.com",
 ];
 
+let publishPool;
+function getPublishPool() {
+  if (!publishPool) publishPool = new SimplePool();
+  return publishPool;
+}
+
 function getTag(event, name) {
   return event.tags.find((t) => t[0] === name);
 }
 
-/**
- * Parses a rumor into an order record, or returns null if it's not an
- * order-creation message (kind 16, type "1") — could be a general
- * message, a payment request from us, a status update, etc.
- */
 function parseOrder(rumor) {
   if (rumor.kind !== 16) return null;
   const typeTag = getTag(rumor, "type");
@@ -48,6 +49,7 @@ function parseOrder(rumor) {
     })),
     address: getTag(rumor, "address")?.[1] || null,
     email: getTag(rumor, "email")?.[1] || null,
+    phone: getTag(rumor, "phone")?.[1] || null,
     notes: rumor.content || "",
     createdAt: rumor.created_at,
   };
@@ -55,8 +57,19 @@ function parseOrder(rumor) {
 
 function parseReceipt(rumor) {
   if (rumor.kind !== 17) return null;
+  return { orderId: getTag(rumor, "order")?.[1], createdAt: rumor.created_at };
+}
+
+/** General communication (kind 14) tied to an order via its subject tag. */
+function parseMessage(rumor) {
+  if (rumor.kind !== 14) return null;
+  const orderId = getTag(rumor, "subject")?.[1];
+  if (!orderId) return null;
   return {
-    orderId: getTag(rumor, "order")?.[1],
+    orderId,
+    fromMe: rumor.pubkey === SOUND_COFFEE_PUBKEY,
+    senderPubkey: rumor.pubkey,
+    content: rumor.content,
     createdAt: rumor.created_at,
   };
 }
@@ -91,11 +104,101 @@ function ItemNames({ items, listings }) {
   );
 }
 
+function OrderDetail({ order, messages, onSend }) {
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const { profile: buyerProfile } = useProfile(order.buyerPubkey);
+
+  async function handleSend() {
+    if (!draft.trim()) return;
+    setSending(true);
+    try {
+      await onSend(order, draft.trim());
+      setDraft("");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <tr>
+      <td colSpan={7} className="bg-ink/5 px-4 py-4">
+        <div className="grid gap-6 sm:grid-cols-2">
+          <div className="font-serif text-sm text-ink/80">
+            <p className="font-display text-xs tracking-widest text-ink/50">
+              FULL SHIPPING ADDRESS
+            </p>
+            <p className="mt-1 whitespace-pre-line">{order.address || "Not provided"}</p>
+            <p className="mt-3 font-display text-xs tracking-widest text-ink/50">
+              CONTACT
+            </p>
+            <p className="mt-1">{order.email || "No email provided"}</p>
+            {order.phone && <p>{order.phone}</p>}
+            {order.notes && (
+              <>
+                <p className="mt-3 font-display text-xs tracking-widest text-ink/50">
+                  ORDER NOTES
+                </p>
+                <p className="mt-1">{order.notes}</p>
+              </>
+            )}
+          </div>
+
+          <div>
+            <p className="font-display text-xs tracking-widest text-ink/50">
+              MESSAGE {buyerProfile?.display_name || buyerProfile?.name || "BUYER"}
+            </p>
+            <div className="mt-2 max-h-48 space-y-2 overflow-y-auto border-2 border-ink/10 bg-paper p-3">
+              {messages.length === 0 && (
+                <p className="font-serif text-xs italic text-ink/40">
+                  No messages yet.
+                </p>
+              )}
+              {messages.map((m, i) => (
+                <div
+                  key={i}
+                  className={`font-serif text-sm ${m.fromMe ? "text-right" : "text-left"}`}
+                >
+                  <span
+                    className={`inline-block max-w-[85%] px-3 py-1.5 ${
+                      m.fromMe ? "bg-ink text-paper" : "border border-ink/20 text-ink"
+                    }`}
+                  >
+                    {m.content}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 flex gap-2">
+              <input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                placeholder="Ask about their order…"
+                className="flex-1 border-2 border-ink/30 px-3 py-2 font-serif text-sm focus:border-ink focus:outline-none"
+              />
+              <button
+                onClick={handleSend}
+                disabled={sending || !draft.trim()}
+                className="border-2 border-ink bg-ink px-4 py-2 font-display text-xs tracking-widest text-paper hover:bg-rust hover:border-rust disabled:opacity-50"
+              >
+                {sending ? "…" : "SEND"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 export default function OrdersPage() {
-  const { isLoggedIn, pubkey, nip44Decrypt, restoring } = useAuth();
+  const { isLoggedIn, pubkey, signEvent, nip44Encrypt, nip44Decrypt, restoring } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
   const [orders, setOrders] = useState(null);
   const [paidOrderIds, setPaidOrderIds] = useState(new Set());
+  const [messagesByOrder, setMessagesByOrder] = useState({});
+  const [expandedOrderId, setExpandedOrderId] = useState(null);
   const [loadProgress, setLoadProgress] = useState(null);
   const [relaysSearched, setRelaysSearched] = useState([]);
   const [error, setError] = useState(false);
@@ -109,12 +212,6 @@ export default function OrdersPage() {
 
     async function load() {
       try {
-        // Check Sound Coffee's own declared DM inbox relays (NIP-17,
-        // kind 10050) first — if set, that's where well-behaved apps
-        // should actually be sending orders. Combine with our usual
-        // defaults and a wider pool of common relays, since we can't
-        // know in advance where every possible sender might have
-        // published instead.
         const ownDmRelays = await getDmRelaysFor(SOUND_COFFEE_PUBKEY);
         const searchRelays = [
           ...new Set([...ownDmRelays, ...DEFAULT_RELAYS, ...EXTRA_SEARCH_RELAYS]),
@@ -133,28 +230,37 @@ export default function OrdersPage() {
 
         const foundOrders = [];
         const foundPaidIds = new Set();
+        const foundMessages = {};
 
-        // Sequential, not parallel — some signers (extensions, remote
-        // bunkers) handle one decrypt request at a time much more
-        // reliably than a burst of simultaneous ones.
         for (let i = 0; i < wraps.length; i++) {
           try {
             const rumor = await unwrapGiftWrap(wraps[i], nip44Decrypt);
+
             const order = parseOrder(rumor);
             if (order) foundOrders.push(order);
+
             const receipt = parseReceipt(rumor);
             if (receipt?.orderId) foundPaidIds.add(receipt.orderId);
+
+            const message = parseMessage(rumor);
+            if (message) {
+              if (!foundMessages[message.orderId]) foundMessages[message.orderId] = [];
+              foundMessages[message.orderId].push(message);
+            }
           } catch {
-            // Not addressed to us in a way we can decrypt, or malformed
-            // — skip it, one bad message shouldn't break the dashboard.
+            // Not addressed to us in a way we can decrypt, or malformed.
           }
           if (!cancelled) setLoadProgress({ done: i + 1, total: wraps.length });
         }
 
         if (cancelled) return;
         foundOrders.sort((a, b) => b.createdAt - a.createdAt);
+        for (const id in foundMessages) {
+          foundMessages[id].sort((a, b) => a.createdAt - b.createdAt);
+        }
         setOrders(foundOrders);
         setPaidOrderIds(foundPaidIds);
+        setMessagesByOrder(foundMessages);
       } catch {
         if (!cancelled) setError(true);
       }
@@ -165,6 +271,41 @@ export default function OrdersPage() {
       cancelled = true;
     };
   }, [isRightAccount, nip44Decrypt]);
+
+  async function handleSendMessage(order, text) {
+    const eventTemplate = {
+      kind: 14,
+      tags: [["p", order.buyerPubkey], ["subject", order.orderId]],
+      content: text,
+    };
+    const [toBuyer, toSelf] = await giftWrapForBoth({
+      eventTemplate,
+      senderPubkey: pubkey,
+      recipientPubkey: order.buyerPubkey,
+      authNip44Encrypt: nip44Encrypt,
+      authSignEvent: signEvent,
+    });
+
+    const buyerDmRelays = await getDmRelaysFor(order.buyerPubkey);
+    const publishTargets = [...new Set([...buyerDmRelays, ...DEFAULT_RELAYS])];
+
+    await Promise.any(getPublishPool().publish(publishTargets, toBuyer));
+    await Promise.any(getPublishPool().publish(DEFAULT_RELAYS, toSelf));
+
+    setMessagesByOrder((prev) => ({
+      ...prev,
+      [order.orderId]: [
+        ...(prev[order.orderId] || []),
+        {
+          orderId: order.orderId,
+          fromMe: true,
+          senderPubkey: pubkey,
+          content: text,
+          createdAt: Math.floor(Date.now() / 1000),
+        },
+      ],
+    }));
+  }
 
   return (
     <>
@@ -177,9 +318,8 @@ export default function OrdersPage() {
           </h1>
           <p className="mt-3 text-center font-serif text-ink/70">
             Every NIP-99 order sent to the Sound Coffee npub, decrypted
-            here directly — however it arrived. Whether someone bought
-            through this site, Conduit, TakeMySats, or any other Gamma-
-            compatible marketplace app, it shows up in the same place.
+            here directly — however it arrived. Click a row for full
+            shipping details and to message the buyer directly.
           </p>
 
           {!restoring && !isLoggedIn && (
@@ -209,12 +349,9 @@ export default function OrdersPage() {
               </summary>
               <p className="mt-2 font-mono">{relaysSearched.join(", ")}</p>
               <p className="mt-2 italic">
-                An order sent to a relay not in this list won&rsquo;t show
-                up here — there&rsquo;s no way to search every relay that
-                exists. If you know an order is missing, publishing your
-                own NIP-17 DM relay list (kind 10050) tells well-behaved
-                apps exactly where to send things, and we&rsquo;ll always
-                check there first.
+                Publish your own DM relay list under Club Admin &rarr;
+                Merchant Settings to make sure well-behaved apps send
+                orders somewhere we&rsquo;re actually looking.
               </p>
             </details>
           )}
@@ -249,43 +386,58 @@ export default function OrdersPage() {
                       <th className="py-2 pr-4">ITEM(S)</th>
                       <th className="py-2 pr-4">AMOUNT</th>
                       <th className="py-2 pr-4">STATUS</th>
-                      <th className="py-2 pr-4">SHIPPING</th>
-                      <th className="py-2">NOTES</th>
+                      <th className="py-2 pr-4">MESSAGES</th>
+                      <th className="py-2"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {orders.map((order) => (
-                      <tr key={order.orderId} className="border-b border-ink/10 align-top">
-                        <td className="py-3 pr-4 text-xs text-ink/50">
-                          {new Date(order.createdAt * 1000).toLocaleDateString()}
-                        </td>
-                        <td className="py-3 pr-4">
-                          <BuyerName pubkey={order.buyerPubkey} />
-                        </td>
-                        <td className="py-3 pr-4">
-                          <ItemNames items={order.items} listings={allListings} />
-                        </td>
-                        <td className="py-3 pr-4">
-                          {order.amountSats.toLocaleString()} sats
-                        </td>
-                        <td className="py-3 pr-4">
-                          {paidOrderIds.has(order.orderId) ? (
-                            <span className="text-jade">✓ Paid</span>
-                          ) : (
-                            <span className="text-rust">Awaiting payment</span>
+                    {orders.map((order) => {
+                      const isOpen = expandedOrderId === order.orderId;
+                      const msgCount = messagesByOrder[order.orderId]?.length || 0;
+                      return (
+                        <Fragment key={order.orderId}>
+                          <tr
+                            onClick={() =>
+                              setExpandedOrderId(isOpen ? null : order.orderId)
+                            }
+                            className="cursor-pointer border-b border-ink/10 align-top hover:bg-ink/5"
+                          >
+                            <td className="py-3 pr-4 text-xs text-ink/50">
+                              {new Date(order.createdAt * 1000).toLocaleDateString()}
+                            </td>
+                            <td className="py-3 pr-4">
+                              <BuyerName pubkey={order.buyerPubkey} />
+                            </td>
+                            <td className="py-3 pr-4">
+                              <ItemNames items={order.items} listings={allListings} />
+                            </td>
+                            <td className="py-3 pr-4">
+                              {order.amountSats.toLocaleString()} sats
+                            </td>
+                            <td className="py-3 pr-4">
+                              {paidOrderIds.has(order.orderId) ? (
+                                <span className="text-jade">✓ Paid</span>
+                              ) : (
+                                <span className="text-rust">Awaiting payment</span>
+                              )}
+                            </td>
+                            <td className="py-3 pr-4 text-xs text-ink/50">
+                              {msgCount > 0 ? `${msgCount} 💬` : "—"}
+                            </td>
+                            <td className="py-3 font-display text-xs text-ink/40">
+                              {isOpen ? "▲" : "▼"}
+                            </td>
+                          </tr>
+                          {isOpen && (
+                            <OrderDetail
+                              order={order}
+                              messages={messagesByOrder[order.orderId] || []}
+                              onSend={handleSendMessage}
+                            />
                           )}
-                        </td>
-                        <td className="py-3 pr-4 max-w-[200px] text-xs">
-                          {order.address || "—"}
-                          {order.email && (
-                            <div className="mt-1 text-ink/50">{order.email}</div>
-                          )}
-                        </td>
-                        <td className="py-3 max-w-[200px] text-xs text-ink/70">
-                          {order.notes || "—"}
-                        </td>
-                      </tr>
-                    ))}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
