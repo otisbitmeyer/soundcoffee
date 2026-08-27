@@ -94,7 +94,7 @@ export default function Header() {
                         onClick={() => setMenuOpen(false)}
                         className="block px-4 py-3 text-ink hover:bg-ink hover:text-paper"
                       >
-                        NEW LISTING
+                        LISTINGS
                       </Link>
                       <Link
                         href="/admin/orders"

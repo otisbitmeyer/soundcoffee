@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { SimplePool } from "nostr-tools/pool";
 import { nip19 } from "nostr-tools";
 import Header from "@/components/Header";
@@ -25,8 +25,46 @@ function newVariationRow() {
   return { id: nextRowId++, size: "", color: "", price: "", stock: "", images: "" };
 }
 
-function ListingRow({ listing, pubkey, signEvent, onDeleted }) {
+function ListingRow({ listing, pubkey, signEvent, onDeleted, onEdit }) {
   const [deleting, setDeleting] = useState(false);
+  const [stock, setStock] = useState("");
+  const [stockLoaded, setStockLoaded] = useState(false);
+  const [savingStock, setSavingStock] = useState(false);
+  const [stockSaved, setStockSaved] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/inventory?coordinate=${encodeURIComponent(listing.coordinate)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.available !== null && data.available !== undefined) {
+          setStock(String(data.available));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setStockLoaded(true));
+  }, [listing.coordinate]);
+
+  async function handleSaveStock() {
+    setSavingStock(true);
+    setStockSaved(false);
+    try {
+      await fetch("/api/inventory/init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productCoordinate: listing.coordinate,
+          title: listing.title,
+          stock: stock === "" ? null : Number(stock),
+        }),
+      });
+      setStockSaved(true);
+      setTimeout(() => setStockSaved(false), 2000);
+    } catch {
+      alert("Couldn't save that stock number. Try again.");
+    } finally {
+      setSavingStock(false);
+    }
+  }
 
   async function handleDelete() {
     if (!confirm(`Delete "${listing.title}"? This can't be undone.`)) return;
@@ -57,43 +95,78 @@ function ListingRow({ listing, pubkey, signEvent, onDeleted }) {
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-ink/10 py-3 last:border-b-0">
-      <div className="flex items-center gap-3">
-        {listing.images?.[0] && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={listing.images[0]}
-            alt=""
-            className="h-12 w-12 shrink-0 border border-ink/20 object-cover"
-          />
-        )}
-        <div>
-          <p className="font-display text-sm text-ink">{listing.title}</p>
-          <p className="font-serif text-xs text-ink/50">
-            {listing.price ? `${listing.price.amount} ${listing.price.currency}` : "No price"}
-            {listing.productType !== "simple" ? ` · ${listing.productType}` : ""}
-          </p>
-          <a
-            href={`https://njump.me/${nip19.naddrEncode({
-              kind: 30402,
-              pubkey: listing.pubkey,
-              identifier: listing.dTag,
-            })}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-mono text-[11px] text-jade hover:underline"
+    <div className="border-b border-ink/10 py-3 last:border-b-0">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          {listing.images?.[0] && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={listing.images[0]}
+              alt=""
+              className="h-12 w-12 shrink-0 border border-ink/20 object-cover"
+            />
+          )}
+          <div>
+            <p className="font-display text-sm text-ink">{listing.title}</p>
+            <p className="font-serif text-xs text-ink/50">
+              {listing.price ? `${listing.price.amount} ${listing.price.currency}` : "No price"}
+              {listing.productType !== "simple" ? ` · ${listing.productType}` : ""}
+            </p>
+            <a
+              href={`https://njump.me/${nip19.naddrEncode({
+                kind: 30402,
+                pubkey: listing.pubkey,
+                identifier: listing.dTag,
+              })}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-[11px] text-jade hover:underline"
+            >
+              view raw event ↗
+            </a>
+          </div>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          {listing.productType !== "variation" && (
+            <button
+              onClick={() => onEdit(listing)}
+              className="border-2 border-ink px-3 py-1.5 font-display text-xs tracking-widest text-ink hover:border-jade hover:text-jade"
+            >
+              EDIT
+            </button>
+          )}
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="border-2 border-rust px-3 py-1.5 font-display text-xs tracking-widest text-rust hover:bg-rust hover:text-paper disabled:opacity-50"
           >
-            view raw event ↗
-          </a>
+            {deleting ? "DELETING…" : "DELETE"}
+          </button>
         </div>
       </div>
-      <button
-        onClick={handleDelete}
-        disabled={deleting}
-        className="shrink-0 border-2 border-rust px-3 py-1.5 font-display text-xs tracking-widest text-rust hover:bg-rust hover:text-paper disabled:opacity-50"
-      >
-        {deleting ? "DELETING…" : "DELETE"}
-      </button>
+
+      <div className="mt-2 flex items-center gap-2 pl-[60px]">
+        <label className="font-display text-xs tracking-widest text-ink/50">
+          STOCK
+        </label>
+        <input
+          type="number"
+          value={stock}
+          onChange={(e) => setStock(e.target.value)}
+          placeholder={stockLoaded ? "unlimited" : "…"}
+          className="w-24 border-2 border-ink/30 px-2 py-1 font-serif text-xs focus:border-ink focus:outline-none"
+        />
+        <button
+          onClick={handleSaveStock}
+          disabled={savingStock}
+          className="border-2 border-ink/30 px-2 py-1 font-display text-[11px] tracking-widest text-ink hover:border-ink disabled:opacity-50"
+        >
+          {savingStock ? "SAVING…" : stockSaved ? "✓ SAVED" : "SAVE"}
+        </button>
+        <span className="font-serif text-[11px] italic text-ink/40">
+          leave blank for unlimited
+        </span>
+      </div>
     </div>
   );
 }
@@ -123,6 +196,13 @@ export default function SellPage() {
   const [shipCurrency, setShipCurrency] = useState("USD");
   const [shipCountry, setShipCountry] = useState("US");
   const [shipService, setShipService] = useState("standard");
+
+  // Set while editing an existing listing — republishing reuses this
+  // exact d-tag instead of generating a new one, which is what makes it
+  // an edit (replaces the old version) rather than a duplicate listing.
+  // Editing is supported for simple listings and variable parents, not
+  // yet for individual variations.
+  const [editingDTag, setEditingDTag] = useState(null);
 
   const [status, setStatus] = useState("form"); // form | working | done | error
   const [error, setError] = useState("");
@@ -187,7 +267,7 @@ export default function SellPage() {
     setError("");
 
     try {
-      const dTag = `${slugify(title)}-${Date.now()}`;
+      const dTag = editingDTag || `${slugify(title)}-${Date.now()}`;
       const defaultImageUrls = imageUrls
         .split("\n")
         .map((s) => s.trim())
@@ -333,8 +413,31 @@ export default function SellPage() {
     setShipPrice("");
     setHasVariations(false);
     setVariations([newVariationRow(), newVariationRow()]);
+    setEditingDTag(null);
     setStatus("form");
     setPublishedEventId(null);
+  }
+
+  function handleEdit(listing) {
+    setTitle(listing.title || "");
+    setSummary(listing.summary || "");
+    setDescription(listing.content || "");
+    setPriceAmount(listing.price?.amount || "");
+    setPriceCurrency(listing.price?.currency || "sats");
+    setImageUrls((listing.images || []).join("\n"));
+    setFormat(listing.format || "physical");
+    setHasVariations(false); // editing works on this listing's own fields only
+    if (listing.shippingCost) {
+      setShipPrice(listing.shippingCost.amount || "");
+      setShipCurrency(listing.shippingCost.currency || "USD");
+    }
+    setEditingDTag(listing.dTag);
+    setStatus("form");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleCancelEdit() {
+    handlePublishAnother();
   }
 
   return (
@@ -344,13 +447,23 @@ export default function SellPage() {
       <main className="admin-fonts flex-1 bg-paper">
         <div className="mx-auto max-w-xl px-6 py-16">
           <h1 className="text-center font-display text-4xl tracking-wide text-ink">
-            NEW LISTING
+            {editingDTag ? "EDIT LISTING" : "NEW LISTING"}
           </h1>
           <p className="mt-3 text-center font-serif text-ink/70">
-            Publishes a NIP-99 product listing directly to Nostr. It'll
-            show up in the Shop as soon as relays pick it up &mdash;
-            usually within a few seconds.
+            {editingDTag
+              ? "Republishing replaces the existing listing everywhere — same identity, updated details."
+              : "Publishes a NIP-99 product listing directly to Nostr. It'll show up in the Shop as soon as relays pick it up — usually within a few seconds."}
           </p>
+          {editingDTag && (
+            <p className="mt-2 text-center">
+              <button
+                onClick={handleCancelEdit}
+                className="font-display text-xs tracking-widest text-rust hover:text-ink"
+              >
+                CANCEL EDIT
+              </button>
+            </p>
+          )}
 
           {!isLoggedIn && (
             <div className="mt-10 border-2 border-ink p-6 text-center">
@@ -392,6 +505,7 @@ export default function SellPage() {
                     pubkey={pubkey}
                     signEvent={signEvent}
                     onDeleted={handleDeleted}
+                    onEdit={handleEdit}
                   />
                 ))}
               {allListings.every((l) => deletedCoords.has(l.coordinate)) && (
@@ -667,7 +781,11 @@ export default function SellPage() {
                 className="w-full border-2 border-ink bg-ink px-4 py-3 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust disabled:opacity-50"
               >
                 {status === "working"
-                  ? "PUBLISHING…"
+                  ? editingDTag
+                    ? "UPDATING…"
+                    : "PUBLISHING…"
+                  : editingDTag
+                  ? "UPDATE LISTING"
                   : hasVariations
                   ? `PUBLISH LISTING + ${variations.filter((v) => v.price).length} VARIATIONS`
                   : "PUBLISH LISTING"}
