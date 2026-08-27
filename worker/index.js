@@ -557,6 +557,7 @@ async function handleCreateOrder(request, env) {
     id,
     customerPubkey,
     customerEmail,
+    isGuest,
     paymentMethod,
     amountSats,
     amountUsdCents,
@@ -574,17 +575,18 @@ async function handleCreateOrder(request, env) {
   const now = Date.now();
   await env.DB.prepare(
     `INSERT INTO orders (
-      id, customer_pubkey, customer_email, payment_method, payment_status,
+      id, customer_pubkey, customer_email, is_guest, payment_method, payment_status,
       fulfillment_status, amount_sats, amount_usd_cents, items_json,
       address_line1, address_line2, city, state, zip, country, phone,
       notes, source, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, 'pending', 'unfulfilled', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, 'pending', 'unfulfilled', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO NOTHING`
   )
     .bind(
       id,
       customerPubkey || null,
       customerEmail || null,
+      isGuest ? 1 : 0,
       paymentMethod,
       amountSats || null,
       amountUsdCents || null,

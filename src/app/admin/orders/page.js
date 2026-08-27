@@ -125,7 +125,7 @@ function OrderDetail({ order, messages, onSend }) {
 
   return (
     <tr>
-      <td colSpan={7} className="bg-ink/5 px-4 py-4">
+      <td colSpan={9} className="bg-ink/5 px-4 py-4">
         <div className="grid gap-6 sm:grid-cols-2">
           <div className="font-serif text-sm text-ink/80">
             <p className="font-display text-xs tracking-widest text-ink/50">
@@ -151,43 +151,65 @@ function OrderDetail({ order, messages, onSend }) {
             <p className="font-display text-xs tracking-widest text-ink/50">
               MESSAGE {buyerProfile?.display_name || buyerProfile?.name || "BUYER"}
             </p>
-            <div className="mt-2 max-h-48 space-y-2 overflow-y-auto border-2 border-ink/10 bg-paper p-3">
-              {messages.length === 0 && (
-                <p className="font-serif text-xs italic text-ink/40">
-                  No messages yet.
-                </p>
-              )}
-              {messages.map((m, i) => (
-                <div
-                  key={i}
-                  className={`font-serif text-sm ${m.fromMe ? "text-right" : "text-left"}`}
-                >
-                  <span
-                    className={`inline-block max-w-[85%] px-3 py-1.5 ${
-                      m.fromMe ? "bg-ink text-paper" : "border border-ink/20 text-ink"
-                    }`}
-                  >
-                    {m.content}
-                  </span>
+
+            {order.isGuest && !order.email ? (
+              <div className="mt-2 border-2 border-ink/10 bg-paper p-3 font-serif text-xs italic text-ink/50">
+                This order was placed anonymously with no email address —
+                there&rsquo;s no reliable way to reach this buyer. A Nostr
+                DM would go to a one-time key they likely never saved.
+              </div>
+            ) : (
+              <>
+                <div className="mt-2 max-h-48 space-y-2 overflow-y-auto border-2 border-ink/10 bg-paper p-3">
+                  {messages.length === 0 && (
+                    <p className="font-serif text-xs italic text-ink/40">
+                      No messages yet.
+                    </p>
+                  )}
+                  {messages.map((m, i) => (
+                    <div
+                      key={i}
+                      className={`font-serif text-sm ${m.fromMe ? "text-right" : "text-left"}`}
+                    >
+                      <span
+                        className={`inline-block max-w-[85%] px-3 py-1.5 ${
+                          m.fromMe ? "bg-ink text-paper" : "border border-ink/20 text-ink"
+                        }`}
+                      >
+                        {m.content}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div className="mt-2 flex gap-2">
-              <input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                placeholder="Ask about their order…"
-                className="flex-1 border-2 border-ink/30 px-3 py-2 font-serif text-sm focus:border-ink focus:outline-none"
-              />
-              <button
-                onClick={handleSend}
-                disabled={sending || !draft.trim()}
-                className="border-2 border-ink bg-ink px-4 py-2 font-display text-xs tracking-widest text-paper hover:bg-rust hover:border-rust disabled:opacity-50"
+                <div className="mt-2 flex gap-2">
+                  <input
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                    placeholder="Ask about their order…"
+                    className="flex-1 border-2 border-ink/30 px-3 py-2 font-serif text-sm focus:border-ink focus:outline-none"
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={sending || !draft.trim()}
+                    className="border-2 border-ink bg-ink px-4 py-2 font-display text-xs tracking-widest text-paper hover:bg-rust hover:border-rust disabled:opacity-50"
+                  >
+                    {sending ? "…" : "SEND"}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {order.email && (
+              <a
+                href={`mailto:${order.email}?subject=${encodeURIComponent(
+                  `Your Sound Coffee order`
+                )}`}
+                className="mt-2 inline-block font-display text-xs tracking-widest text-jade hover:text-ink"
               >
-                {sending ? "…" : "SEND"}
-              </button>
-            </div>
+                ✉️ EMAIL {order.email}
+              </a>
+            )}
           </div>
         </div>
       </td>
@@ -206,6 +228,25 @@ export default function OrdersPage() {
   const [relaysSearched, setRelaysSearched] = useState([]);
   const [error, setError] = useState(null);
   const [showAllOrders, setShowAllOrders] = useState(false); // default: paid-only
+  const [dismissedIds, setDismissedIds] = useState(new Set());
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("dismissed-orders") || "[]");
+      setDismissedIds(new Set(saved));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  function dismissOrder(orderId) {
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      next.add(orderId);
+      localStorage.setItem("dismissed-orders", JSON.stringify([...next]));
+      return next;
+    });
+  }
 
   const isRightAccount = pubkey === SOUND_COFFEE_PUBKEY;
   const { allListings } = useNip99Listings(SOUND_COFFEE_PUBKEY);
@@ -231,6 +272,8 @@ export default function OrdersPage() {
           orderId: o.id,
           buyerPubkey: o.customer_pubkey,
           amountSats: o.amount_sats || 0,
+          amountUsdCents: o.amount_usd_cents || null,
+          isGuest: !!o.is_guest,
           items: o.items,
           address: [o.address_line1, o.address_line2, [o.city, o.state, o.zip].filter(Boolean).join(", "), o.country].filter(Boolean).join("\n") || null,
           email: o.customer_email,
@@ -239,6 +282,7 @@ export default function OrdersPage() {
           createdAt: Math.floor(o.created_at / 1000),
           paymentMethod: o.payment_method,
           paidD1: o.payment_status === "paid",
+          fromD1: true,
         }));
 
         const ownDmRelays = await getDmRelaysFor(SOUND_COFFEE_PUBKEY);
@@ -443,9 +487,9 @@ export default function OrdersPage() {
               </div>
 
               {(() => {
-                const visibleOrders = showAllOrders
-                  ? orders
-                  : orders.filter((o) => paidOrderIds.has(o.orderId));
+                const visibleOrders = (
+                  showAllOrders ? orders : orders.filter((o) => paidOrderIds.has(o.orderId))
+                ).filter((o) => !dismissedIds.has(o.orderId));
 
                 if (visibleOrders.length === 0) {
                   return (
@@ -461,9 +505,11 @@ export default function OrdersPage() {
                 <table className="w-full border-collapse text-left font-serif text-sm">
                   <thead>
                     <tr className="border-b-2 border-ink font-display text-xs tracking-widest text-ink/60">
+                      <th className="py-2 pr-4">ORDER #</th>
                       <th className="py-2 pr-4">DATE</th>
                       <th className="py-2 pr-4">BUYER</th>
                       <th className="py-2 pr-4">ITEM(S)</th>
+                      <th className="py-2 pr-4">METHOD</th>
                       <th className="py-2 pr-4">AMOUNT</th>
                       <th className="py-2 pr-4">STATUS</th>
                       <th className="py-2 pr-4">MESSAGES</th>
@@ -482,6 +528,9 @@ export default function OrdersPage() {
                             }
                             className="cursor-pointer border-b border-ink/10 align-top hover:bg-ink/5"
                           >
+                            <td className="py-3 pr-4 font-mono text-xs text-ink/50">
+                              #{order.orderId.replace(/-/g, "").slice(0, 8).toUpperCase()}
+                            </td>
                             <td className="py-3 pr-4 text-xs text-ink/50">
                               {new Date(order.createdAt * 1000).toLocaleDateString()}
                               {order.possibleDuplicate && (
@@ -496,8 +545,17 @@ export default function OrdersPage() {
                             <td className="py-3 pr-4">
                               <ItemNames items={order.items} listings={allListings} />
                             </td>
+                            <td className="py-3 pr-4 text-xs">
+                              {order.paymentMethod === "card"
+                                ? "💳 Card"
+                                : order.paymentMethod === "lightning"
+                                ? "⚡ Lightning"
+                                : "— External"}
+                            </td>
                             <td className="py-3 pr-4">
-                              {order.amountSats.toLocaleString()} sats
+                              {order.paymentMethod === "card" && order.amountUsdCents
+                                ? `$${(order.amountUsdCents / 100).toFixed(2)}`
+                                : `${order.amountSats.toLocaleString()} sats`}
                             </td>
                             <td className="py-3 pr-4">
                               {paidOrderIds.has(order.orderId) ? (
@@ -510,7 +568,21 @@ export default function OrdersPage() {
                               {msgCount > 0 ? `${msgCount} 💬` : "—"}
                             </td>
                             <td className="py-3 font-display text-xs text-ink/40">
-                              {isOpen ? "▲" : "▼"}
+                              <div className="flex items-center gap-2">
+                                {!order.fromD1 && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      dismissOrder(order.orderId);
+                                    }}
+                                    title="Hide this from your view — doesn't delete anything"
+                                    className="text-rust hover:text-ink"
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                                {isOpen ? "▲" : "▼"}
+                              </div>
                             </td>
                           </tr>
                           {isOpen && (

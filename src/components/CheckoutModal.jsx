@@ -214,6 +214,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
         body: JSON.stringify({
           id: newOrderId,
           customerPubkey: identity.pubkey,
+          isGuest: identity.isGuest,
           customerEmail: email.trim() || null,
           paymentMethod,
           amountSats: totalSats,
