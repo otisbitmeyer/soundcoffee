@@ -4,8 +4,10 @@ import Image from "next/image";
 import Link from "next/link";
 import Header from "@/components/Header";
 import TopEpisodes from "@/components/TopEpisodes";
+import ZapButton from "@/components/ZapButton";
 import { usePodcastFeed } from "@/hooks/usePodcastFeed";
 import { PODCAST_FEEDS } from "@/lib/podcastFeeds";
+import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
 function ShowCard({ feed }) {
   const { feedInfo, episodes } = usePodcastFeed(feed.url);
@@ -53,6 +55,15 @@ export default function ListeningLair() {
             height={156}
             className="mx-auto mt-3 h-auto w-full max-w-xl rotate-2"
           />
+          <div className="mt-6">
+            <ZapButton
+              recipientPubkey={SOUND_COFFEE_PUBKEY}
+              label="Boost the podcast"
+              className="border-2 border-paper px-5 py-2.5 font-display text-sm tracking-widest text-paper transition hover:bg-jade hover:border-jade"
+            >
+              ⚡ BOOST THE PODCAST
+            </ZapButton>
+          </div>
         </div>
 
         <div className="mx-auto max-w-3xl px-6 py-16">

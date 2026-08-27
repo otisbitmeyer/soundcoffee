@@ -5,67 +5,12 @@ import { SimplePool } from "nostr-tools/pool";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import { useAuth } from "@/context/AuthContext";
-import { useProfile } from "@/hooks/useProfile";
 import { DEFAULT_RELAYS } from "@/lib/relays";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
-
-function shortNpub(pubkey) {
-  return `${pubkey.slice(0, 10)}…${pubkey.slice(-6)}`;
-}
-
-function MemberRow({ s }) {
-  const { profile } = useProfile(s.pubkey);
-  const displayName = profile?.display_name || profile?.name;
-
-  return (
-    <tr className="border-b border-ink/10">
-      <td className="py-2 pr-4">
-        <div className="flex items-center gap-2">
-          {profile?.picture ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={profile.picture}
-              alt=""
-              className="h-7 w-7 shrink-0 rounded-full border border-ink/30 object-cover"
-            />
-          ) : (
-            <div className="h-7 w-7 shrink-0 rounded-full border border-ink/20 bg-ink/5" />
-          )}
-          <div>
-            {displayName && (
-              <div className="font-display text-sm text-ink">{displayName}</div>
-            )}
-            <div className="font-mono text-xs text-ink/50">
-              {shortNpub(s.pubkey)}
-            </div>
-          </div>
-        </div>
-      </td>
-      <td className="py-2 pr-4">
-        {s.isMember ? (
-          <span className="text-jade">✓</span>
-        ) : (
-          <span className="text-ink/30">—</span>
-        )}
-      </td>
-      <td className="py-2 pr-4">{s.totalZapSats.toLocaleString()} sats</td>
-      <td className="py-2 pr-4">{s.zapCount}</td>
-      <td className="py-2 pr-4">{s.purchaseCount}</td>
-      <td className="py-2 pr-4">{s.totalPurchaseSats.toLocaleString()} sats</td>
-      <td className="py-2 font-serif text-xs text-ink/50">
-        {s.lastActivityAt ? new Date(s.lastActivityAt).toLocaleDateString() : "—"}
-      </td>
-    </tr>
-  );
-}
 
 export default function AdminPage() {
   const { isLoggedIn, pubkey, signEvent, restoring } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(false);
-  const [recomputing, setRecomputing] = useState(false);
-  const [recomputeResult, setRecomputeResult] = useState(null);
 
   const [dmRelayStatus, setDmRelayStatus] = useState(null); // "checking" | "missing" | "set" | "publishing" | "done" | "error"
   const [dmRelayList, setDmRelayList] = useState(DEFAULT_RELAYS); // editable list
@@ -75,16 +20,8 @@ export default function AdminPage() {
 
   const isRightAccount = pubkey === SOUND_COFFEE_PUBKEY;
 
-  function loadData() {
-    fetch("/api/club-members")
-      .then((res) => res.json())
-      .then(setData)
-      .catch(() => setError(true));
-  }
-
   useEffect(() => {
     if (!isRightAccount) return;
-    loadData();
 
     // Check current merchant settings so we can show real status instead
     // of guessing.
@@ -190,33 +127,14 @@ export default function AdminPage() {
     }
   }
 
-  async function handleRecompute() {
-    setRecomputing(true);
-    setRecomputeResult(null);
-    try {
-      const res = await fetch("/api/admin/recompute-stats", { method: "POST" });
-      const result = await res.json();
-      setRecomputeResult(result);
-      loadData();
-    } catch {
-      setRecomputeResult({ ok: false });
-    } finally {
-      setRecomputing(false);
-    }
-  }
-
-  const sortedStats = data?.allStats
-    ?.slice()
-    .sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
-
   return (
     <>
       <Header />
 
       <main className="admin-fonts flex-1 bg-paper">
-        <div className="mx-auto max-w-4xl px-6 py-16">
+        <div className="mx-auto max-w-2xl px-6 py-16">
           <h1 className="text-center font-display text-4xl tracking-wide text-ink">
-            CLUB ADMIN
+            MERCHANT SETTINGS
           </h1>
 
           {!restoring && !isLoggedIn && (
@@ -239,18 +157,9 @@ export default function AdminPage() {
             </p>
           )}
 
-          {isRightAccount && error && (
-            <p className="mt-10 text-center font-serif italic text-ink/50">
-              Couldn&rsquo;t load member data right now.
-            </p>
-          )}
-
           {isRightAccount && (
-            <div className="mx-auto mt-10 max-w-2xl border-2 border-ink/20 p-5">
-              <h2 className="font-display text-lg tracking-wide text-ink">
-                MERCHANT SETTINGS
-              </h2>
-              <p className="mt-1 mb-4 font-serif text-sm text-ink/60">
+            <div className="mt-10 border-2 border-ink/20 p-5">
+              <p className="mb-4 font-serif text-sm text-ink/60">
                 These make order delivery and payment processing more
                 reliable for buyers using any Gamma-compatible app, not
                 just this site.
@@ -351,66 +260,6 @@ export default function AdminPage() {
                       : "SET TO LIGHTNING"}
                   </button>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {isRightAccount && data && (
-            <div className="mt-10">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <p className="font-serif text-ink/70">
-                  <span className="font-display text-2xl text-jade">
-                    {data.members.length}
-                  </span>{" "}
-                  club member{data.members.length === 1 ? "" : "s"} out of{" "}
-                  {data.allStats.length} tracked pubkey
-                  {data.allStats.length === 1 ? "" : "s"}.
-                </p>
-                <button
-                  onClick={handleRecompute}
-                  disabled={recomputing}
-                  className="border-2 border-ink px-4 py-2 font-display text-xs tracking-widest text-ink hover:border-jade hover:text-jade disabled:opacity-50"
-                >
-                  {recomputing ? "RECOMPUTING…" : "RECOMPUTE ALL STATS"}
-                </button>
-              </div>
-
-              {recomputeResult && (
-                <p
-                  className={`mt-3 text-sm font-serif ${
-                    recomputeResult.ok ? "text-jade" : "text-rust"
-                  }`}
-                >
-                  {recomputeResult.ok
-                    ? `Done — rebuilt stats for ${recomputeResult.pubkeysRecomputed} pubkeys from ${recomputeResult.uniqueZapsFound} unique zaps and ${recomputeResult.uniquePurchasesFound} unique purchases.`
-                    : "Something went wrong recomputing stats."}
-                </p>
-              )}
-
-              <div className="mt-6 overflow-x-auto">
-                <table className="w-full border-collapse text-left font-serif text-sm">
-                  <thead>
-                    <tr className="border-b-2 border-ink font-display text-xs tracking-widest text-ink/60">
-                      <th className="py-2 pr-4">MEMBER</th>
-                      <th className="py-2 pr-4">CLUB</th>
-                      <th className="py-2 pr-4">ZAPPED</th>
-                      <th className="py-2 pr-4">ZAPS</th>
-                      <th className="py-2 pr-4">PURCHASES</th>
-                      <th className="py-2 pr-4">SPENT</th>
-                      <th className="py-2">LAST ACTIVITY</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedStats.map((s) => (
-                      <MemberRow key={s.pubkey} s={s} />
-                    ))}
-                  </tbody>
-                </table>
-                {sortedStats?.length === 0 && (
-                  <p className="mt-6 font-serif italic text-ink/50">
-                    No activity tracked yet.
-                  </p>
-                )}
               </div>
             </div>
           )}

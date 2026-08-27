@@ -33,7 +33,7 @@ export function usePodcastFeed(feedUrl) {
 
     const proxyUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(
       feedUrl
-    )}`;
+    )}&count=100`;
 
     fetch(proxyUrl)
       .then((res) => res.json())

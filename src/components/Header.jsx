@@ -52,7 +52,6 @@ export default function Header() {
           <nav className="hidden items-center gap-8 font-display text-sm tracking-widest text-ink sm:flex">
             <Link href="/#shop" className="hover:text-rust">SHOP</Link>
             <Link href="/listening-lair" className="hover:text-rust">LISTEN</Link>
-            <Link href="/#club" className="hover:text-rust">THE CLUB</Link>
           </nav>
 
           <div className="flex items-center gap-3 sm:hidden">
@@ -88,19 +87,12 @@ export default function Header() {
 
               {menuOpen && (
                 <div className="absolute right-0 mt-2 w-48 border-2 border-ink bg-paper font-display text-sm tracking-widest shadow-lg">
-                  <Link
-                    href="/dashboard"
-                    onClick={() => setMenuOpen(false)}
-                    className="block px-4 py-3 text-ink hover:bg-ink hover:text-paper"
-                  >
-                    DASHBOARD
-                  </Link>
                   {isSoundCoffeeAccount && (
                     <>
                       <Link
                         href="/sell"
                         onClick={() => setMenuOpen(false)}
-                        className="block border-t border-ink/10 px-4 py-3 text-ink hover:bg-ink hover:text-paper"
+                        className="block px-4 py-3 text-ink hover:bg-ink hover:text-paper"
                       >
                         NEW LISTING
                       </Link>
@@ -116,7 +108,7 @@ export default function Header() {
                         onClick={() => setMenuOpen(false)}
                         className="block border-t border-ink/10 px-4 py-3 text-ink hover:bg-ink hover:text-paper"
                       >
-                        CLUB ADMIN
+                        MERCHANT SETTINGS
                       </Link>
                     </>
                   )}
@@ -154,16 +146,9 @@ export default function Header() {
             <Link
               href="/listening-lair"
               onClick={() => setMobileNavOpen(false)}
-              className="border-b border-ink/10 px-6 py-3 hover:bg-ink hover:text-paper"
-            >
-              LISTEN
-            </Link>
-            <Link
-              href="/#club"
-              onClick={() => setMobileNavOpen(false)}
               className="px-6 py-3 hover:bg-ink hover:text-paper"
             >
-              THE CLUB
+              LISTEN
             </Link>
           </nav>
         )}

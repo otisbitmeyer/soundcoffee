@@ -4,9 +4,6 @@ import { Suspense } from "react";
 import Header from "@/components/Header";
 import PodcastEpisodes from "@/components/PodcastEpisodes";
 import ShopGrid from "@/components/ShopGrid";
-import ZapButton from "@/components/ZapButton";
-import BuyCoffeeButton from "@/components/BuyCoffeeButton";
-import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
 export default function Home() {
   return (
@@ -36,67 +33,11 @@ export default function Home() {
 
             <div className="mt-10">
               <a
-                href="#club"
+                href="#shop"
                 className="inline-block border-2 border-paper px-6 py-3 font-display text-sm tracking-widest text-paper transition hover:border-jade hover:text-jade"
               >
-                JOIN THE CLUB
+                SHOP THE COFFEE
               </a>
-            </div>
-          </div>
-        </section>
-
-        {/* ---------- THE CLUB ---------- */}
-        <section id="club" className="border-b-4 border-ink bg-paper">
-          <div className="mx-auto max-w-6xl px-6 py-20 text-center">
-            <h2 className="font-display text-4xl tracking-wide text-ink sm:text-5xl">
-              THE COFFEE CLUB
-            </h2>
-            <Image
-              src="/club-graphic.png"
-              alt="Two doors, one membership."
-              width={2172}
-              height={724}
-              className="mx-auto -mt-1 h-auto w-[336px]"
-            />
-
-            <div className="mt-12 grid gap-8 sm:grid-cols-2">
-              <div className="flex flex-col items-center border-2 border-ink p-8 text-center">
-                <span className="font-display text-sm tracking-widest text-rust">
-                  01 &mdash; BUY THE COFFEE
-                </span>
-                <h3 className="mt-3 font-display text-2xl text-ink">
-                  Purchase a bag
-                </h3>
-                <p className="mt-3 font-serif text-ink/75">
-                  Any coffee order gets you into the club. Your nostr npub
-                  makes it possible.
-                </p>
-                <div className="mt-5">
-                  <BuyCoffeeButton />
-                </div>
-              </div>
-
-              <div className="flex flex-col items-center border-2 border-ink p-8 text-center">
-                <span className="font-display text-sm tracking-widest text-jade">
-                  02 &mdash; BOOST THE SHOW
-                </span>
-                <h3 className="mt-3 font-display text-2xl text-ink">
-                  Zap the podcast
-                </h3>
-                <p className="mt-3 font-serif text-ink/75">
-                  Send a boost of 100 sats or greater to the podcast and
-                  you&rsquo;re in, easy peasy.
-                </p>
-                <div className="mt-5">
-                  <ZapButton
-                    recipientPubkey={SOUND_COFFEE_PUBKEY}
-                    label="Boost the podcast"
-                    className="border-2 border-ink bg-ink px-5 py-2.5 font-display text-sm tracking-widest text-paper transition hover:bg-jade hover:border-jade"
-                  >
-                    ⚡ BOOST THE PODCAST
-                  </ZapButton>
-                </div>
-              </div>
             </div>
           </div>
         </section>
