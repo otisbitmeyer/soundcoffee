@@ -5,6 +5,7 @@ import { SimplePool } from "nostr-tools/pool";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import { useAuth } from "@/context/AuthContext";
+import { useNip99Listings } from "@/hooks/useNip99Listings";
 import { DEFAULT_RELAYS } from "@/lib/relays";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
@@ -21,6 +22,67 @@ function slugify(text) {
 let nextRowId = 1;
 function newVariationRow() {
   return { id: nextRowId++, size: "", color: "", price: "", stock: "", images: "" };
+}
+
+function ListingRow({ listing, pubkey, signEvent, onDeleted }) {
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!confirm(`Delete "${listing.title}"? This can't be undone.`)) return;
+    setDeleting(true);
+    try {
+      // NIP-09 deletion request — includes both the addressable
+      // coordinate (correct for a parameterized-replaceable NIP-99
+      // listing) and the specific event id, for broader client support.
+      const template = {
+        kind: 5,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [
+          ["a", listing.coordinate],
+          ["e", listing.id],
+          ["k", "30402"],
+        ],
+        content: "Listing removed by seller.",
+      };
+      const signed = await signEvent(template);
+      const pool = new SimplePool();
+      await Promise.any(pool.publish(DEFAULT_RELAYS, signed));
+      onDeleted(listing.coordinate);
+    } catch {
+      alert("Something went wrong deleting this listing. Try again.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-ink/10 py-3 last:border-b-0">
+      <div className="flex items-center gap-3">
+        {listing.images?.[0] && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={listing.images[0]}
+            alt=""
+            className="h-12 w-12 shrink-0 border border-ink/20 object-cover"
+          />
+        )}
+        <div>
+          <p className="font-display text-sm text-ink">{listing.title}</p>
+          <p className="font-serif text-xs text-ink/50">
+            {listing.price ? `${listing.price.amount} ${listing.price.currency}` : "No price"}
+            {listing.productType !== "simple" ? ` · ${listing.productType}` : ""}
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={handleDelete}
+        disabled={deleting}
+        className="shrink-0 border-2 border-rust px-3 py-1.5 font-display text-xs tracking-widest text-rust hover:bg-rust hover:text-paper disabled:opacity-50"
+      >
+        {deleting ? "DELETING…" : "DELETE"}
+      </button>
+    </div>
+  );
 }
 
 export default function SellPage() {
@@ -54,6 +116,12 @@ export default function SellPage() {
   const [publishedEventId, setPublishedEventId] = useState(null);
 
   const isRightAccount = pubkey === SOUND_COFFEE_PUBKEY;
+  const { listings, allListings } = useNip99Listings(isRightAccount ? SOUND_COFFEE_PUBKEY : null);
+  const [deletedCoords, setDeletedCoords] = useState(new Set());
+
+  function handleDeleted(coordinate) {
+    setDeletedCoords((prev) => new Set(prev).add(coordinate));
+  }
 
   function updateVariation(id, field, value) {
     setVariations((rows) =>
@@ -290,6 +358,35 @@ export default function SellPage() {
               You&rsquo;re logged in, but not as the Sound Coffee account.
               Log out and back in with that identity to publish here.
             </p>
+          )}
+
+          {isRightAccount && allListings && allListings.length > 0 && (
+            <div className="mt-10 border-2 border-ink/20 p-5">
+              <h2 className="font-display text-lg tracking-wide text-ink">
+                YOUR LISTINGS
+              </h2>
+              <p className="mt-1 mb-3 font-serif text-xs text-ink/50">
+                Deleting publishes a NIP-09 removal request — other apps
+                honor it the same way ours does, but it can take a few
+                minutes to propagate everywhere.
+              </p>
+              {allListings
+                .filter((l) => !deletedCoords.has(l.coordinate))
+                .map((l) => (
+                  <ListingRow
+                    key={l.id}
+                    listing={l}
+                    pubkey={pubkey}
+                    signEvent={signEvent}
+                    onDeleted={handleDeleted}
+                  />
+                ))}
+              {allListings.every((l) => deletedCoords.has(l.coordinate)) && (
+                <p className="font-serif text-sm italic text-ink/50">
+                  No listings left.
+                </p>
+              )}
+            </div>
           )}
 
           {isLoggedIn && isRightAccount && status !== "done" && (
