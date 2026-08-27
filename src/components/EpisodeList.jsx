@@ -17,6 +17,13 @@ function getPublishPool() {
   return publishPool;
 }
 
+function formatSatsCompact(sats) {
+  if (sats >= 1000) {
+    return `${(sats / 1000).toFixed(1)}k sats`;
+  }
+  return `${sats.toLocaleString()} sats`;
+}
+
 function formatDate(dateString) {
   try {
     return new Date(dateString).toLocaleDateString(undefined, {
@@ -134,10 +141,9 @@ function EpisodeCard({ episode }) {
             </div>
 
             {!loading && data && data.count > 0 && (
-              <span className="inline-block min-w-[92px] border border-paper/20 px-2 py-1 text-right font-serif text-xs text-paper/50">
-                {data.count} zap{data.count === 1 ? "" : "s"}
-                <br />
-                {data.totalSats.toLocaleString()} sats
+              <span className="font-serif text-xs text-paper/50">
+                {data.count} zap{data.count === 1 ? "" : "s"} ·{" "}
+                {formatSatsCompact(data.totalSats)}
               </span>
             )}
           </div>

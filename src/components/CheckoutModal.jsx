@@ -295,6 +295,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
             invoice: `stripe:${newOrderId}`,
             verifyUrl: null,
             amountSats: totalSats,
+            isGuest: identity.isGuest,
           }),
         });
 
@@ -341,6 +342,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
           invoice: pr,
           verifyUrl: verify,
           amountSats: totalSats,
+          isGuest: identity.isGuest,
         }),
       }).catch(() => {});
 

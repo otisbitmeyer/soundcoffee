@@ -142,6 +142,19 @@ async function getStats(env, pubkey) {
 }
 
 async function recordConfirmedPayment(env, { pubkey, type, amountSats, sourceId }) {
+  // Guest checkout/zapping creates a real, one-time signed Nostr identity
+  // — indistinguishable from a "real" user's once it's broadcast to
+  // relays. That means even a completely independent relay scan (or a
+  // full recompute) would otherwise credit membership to a key nobody
+  // will ever use again. We mark known guest pubkeys permanently at
+  // creation time (see handlePendingPayment) and check it here — the one
+  // place every membership-crediting path (our own registration, the
+  // relay scan, and recompute) all funnel through — so a throwaway
+  // identity can never accumulate club membership, regardless of which
+  // path discovers its activity.
+  const isKnownGuest = await env.SOUND_COFFEE_KV.get(`guest-pubkey:${pubkey}`);
+  if (isKnownGuest) return;
+
   const stats = await getStats(env, pubkey);
 
   // Idempotency — don't double-count if this exact payment was already
@@ -204,13 +217,21 @@ async function recordEpisodeZap(env, { episodeGuid, amountSats, comment, zapperP
 
 async function handlePendingPayment(request, env) {
   const body = await request.json();
-  const { id, type, pubkey, sellerPubkey, invoice, verifyUrl, amountSats, episodeGuid, comment } = body;
+  const { id, type, pubkey, sellerPubkey, invoice, verifyUrl, amountSats, episodeGuid, comment, isGuest } = body;
 
   if (!id || !type || !pubkey || !invoice || !amountSats) {
     return jsonResponse({ error: "Missing required fields." }, 422);
   }
   if (type !== "zap" && type !== "purchase") {
     return jsonResponse({ error: "type must be 'zap' or 'purchase'." }, 422);
+  }
+
+  // Permanent marker (no expiration) — this is what keeps a one-time
+  // guest identity from ever accumulating club membership, no matter
+  // which path (our own registration, an independent relay scan, or a
+  // full recompute) later discovers activity from this same pubkey.
+  if (isGuest) {
+    await env.SOUND_COFFEE_KV.put(`guest-pubkey:${pubkey}`, "1");
   }
 
   await env.SOUND_COFFEE_KV.put(
@@ -488,10 +509,22 @@ async function handleRecomputeStats(env) {
 
   // Write back, preserving each pubkey's original memberSince if they
   // were already a member (so this doesn't reset their "member since"
-  // date), only assigning a new one if they're newly qualifying.
+  // date), only assigning a new one if they're newly qualifying. Known
+  // guest identities are skipped entirely — see recordConfirmedPayment
+  // for why — and any stats they already accumulated (from before this
+  // protection existed) get removed here too, so a recompute also
+  // cleans up past pollution, not just prevents new pollution.
   const now = Date.now();
   const results = [];
+  let guestsSkipped = 0;
   for (const entry of byPubkey.values()) {
+    const isKnownGuest = await env.SOUND_COFFEE_KV.get(`guest-pubkey:${entry.pubkey}`);
+    if (isKnownGuest) {
+      await env.SOUND_COFFEE_KV.delete(`stats:${entry.pubkey}`);
+      guestsSkipped++;
+      continue;
+    }
+
     const existingRaw = await env.SOUND_COFFEE_KV.get(`stats:${entry.pubkey}`);
     const existing = existingRaw ? JSON.parse(existingRaw) : null;
     const qualifies = entry.totalZapSats >= MIN_BOOST_SATS || entry.purchaseCount > 0;
@@ -525,6 +558,7 @@ async function handleRecomputeStats(env) {
     pubkeysRecomputed: results.length,
     uniqueZapsFound: zapTotals.size,
     uniquePurchasesFound: purchaseTotals.size,
+    guestsSkipped,
     results,
   });
 }

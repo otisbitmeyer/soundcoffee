@@ -174,6 +174,7 @@ export default function ZapModal({
           amountSats: effectiveAmount,
           episodeGuid: episodeGuid || null,
           comment,
+          isGuest: identity.isGuest,
         }),
       }).catch(() => {});
 
