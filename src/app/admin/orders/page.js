@@ -396,6 +396,7 @@ export default function OrdersPage() {
           kind4Count: events.filter((e) => e.kind === 4).length,
           decryptFailures: 0,
           decryptedNotOrderRelated: 0,
+          unrecognizedSamples: [],
           firstError: null,
         };
 
@@ -425,7 +426,19 @@ export default function OrdersPage() {
             const order = parseOrder(rumor);
             const receipt = parseReceipt(rumor);
             const message = parseMessage(rumor);
-            if (!order && !receipt && !message) diag.decryptedNotOrderRelated++;
+            if (!order && !receipt && !message) {
+              diag.decryptedNotOrderRelated++;
+              // Capture a few real samples — this is what actually shows
+              // us whether Conduit's tag structure differs from what our
+              // parser expects, instead of continuing to guess blind.
+              if (diag.unrecognizedSamples.length < 5) {
+                diag.unrecognizedSamples.push({
+                  kind: rumor.kind,
+                  tags: rumor.tags,
+                  contentPreview: (rumor.content || "").slice(0, 80),
+                });
+              }
+            }
 
             if (order && !d1OrderIds.has(order.orderId)) foundOrders.push(order);
             if (receipt?.orderId) foundPaidIds.add(receipt.orderId);
@@ -656,6 +669,21 @@ export default function OrdersPage() {
                 {diagnostics.decryptedNotOrderRelated} decrypted fine but
                 weren&rsquo;t order/receipt/message content.
               </p>
+
+              {diagnostics.unrecognizedSamples.length > 0 && (
+                <div className="mt-2 border-t border-ink/10 pt-2 text-left font-mono text-[11px] text-ink/60">
+                  <p className="font-display tracking-widest text-ink/40">
+                    UNRECOGNIZED SAMPLES
+                  </p>
+                  {diagnostics.unrecognizedSamples.map((s, i) => (
+                    <div key={i} className="mt-1 border-t border-ink/5 pt-1">
+                      <p>kind: {s.kind}</p>
+                      <p>tags: {JSON.stringify(s.tags)}</p>
+                      <p>content: {s.contentPreview}…</p>
+                    </div>
+                  ))}
+                </div>
+              )}
               {diagnostics.firstError && (
                 <div className="mt-2 border-t border-ink/10 pt-2 text-left font-mono text-[11px] text-rust">
                   <p>First error: {diagnostics.firstError}</p>
