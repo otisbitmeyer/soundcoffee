@@ -435,7 +435,20 @@ export default function OrdersPage() {
             }
           } catch (e) {
             diag.decryptFailures++;
-            if (!diag.firstError) diag.firstError = `${e.message || e} (kind ${event.kind})`;
+            if (!diag.firstError) {
+              diag.firstError = `${e.message || e} (kind ${event.kind})`;
+              // None of this requires decryption — it's exactly what's
+              // safe to inspect about a message we can't read the
+              // contents of, and it's enough to actually diagnose why.
+              diag.firstFailureDetail = {
+                pubkey: event.pubkey,
+                contentLength: event.content?.length ?? 0,
+                contentPreview: (event.content || "").slice(0, 40),
+                tagCount: event.tags?.length ?? 0,
+                createdAt: new Date(event.created_at * 1000).toISOString(),
+                id: event.id,
+              };
+            }
           }
           if (!cancelled) setLoadProgress({ done: i + 1, total: events.length });
         }
@@ -639,9 +652,25 @@ export default function OrdersPage() {
                 weren&rsquo;t order/receipt/message content.
               </p>
               {diagnostics.firstError && (
-                <p className="mt-2 border-t border-ink/10 pt-2 font-mono text-[11px] text-rust">
-                  First error: {diagnostics.firstError}
-                </p>
+                <div className="mt-2 border-t border-ink/10 pt-2 text-left font-mono text-[11px] text-rust">
+                  <p>First error: {diagnostics.firstError}</p>
+                  {diagnostics.firstFailureDetail && (
+                    <>
+                      <p className="mt-1">
+                        sender: {diagnostics.firstFailureDetail.pubkey}
+                      </p>
+                      <p>
+                        content length: {diagnostics.firstFailureDetail.contentLength}
+                      </p>
+                      <p>
+                        content starts: {diagnostics.firstFailureDetail.contentPreview}…
+                      </p>
+                      <p>tags: {diagnostics.firstFailureDetail.tagCount}</p>
+                      <p>created_at: {diagnostics.firstFailureDetail.createdAt}</p>
+                      <p>event id: {diagnostics.firstFailureDetail.id}</p>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           )}

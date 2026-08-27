@@ -74,8 +74,18 @@ export async function giftWrap({
  */
 export async function unwrapGiftWrap(wrappedEvent, authNip44Decrypt) {
   const sealJson = await authNip44Decrypt(wrappedEvent.pubkey, wrappedEvent.content);
+  if (typeof sealJson !== "string" || !sealJson) {
+    throw new Error(
+      `Decrypting the wrap returned ${typeof sealJson} instead of text — the signer likely failed to decrypt this specific message and didn't throw a proper error.`
+    );
+  }
   const seal = JSON.parse(sealJson);
   const rumorJson = await authNip44Decrypt(seal.pubkey, seal.content);
+  if (typeof rumorJson !== "string" || !rumorJson) {
+    throw new Error(
+      `Decrypting the seal returned ${typeof rumorJson} instead of text — the signer likely failed to decrypt this specific message and didn't throw a proper error.`
+    );
+  }
   const rumor = JSON.parse(rumorJson);
   return rumor;
 }
