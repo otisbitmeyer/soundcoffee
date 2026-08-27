@@ -26,6 +26,21 @@ const DEFAULT_RELAYS = [
   "wss://relay.nostr.band",
 ];
 
+// A wider set specifically for zap-receipt scanning — a boost from an
+// unfamiliar wallet/client could easily publish its receipt somewhere
+// outside the narrow 4-relay default, and this was silently missing
+// those with no way to tell. Matches the set the orders dashboard
+// already searches for the same reason.
+const ZAP_SEARCH_RELAYS = [
+  ...DEFAULT_RELAYS,
+  "wss://relay.snort.social",
+  "wss://nostr.wine",
+  "wss://relay.nostr.bg",
+  "wss://offchain.pub",
+  "wss://relay.mostr.pub",
+  "wss://relay.nostrplebs.com",
+];
+
 const SOUND_COFFEE_PUBKEY =
   "3e8220285e34b7dd2212b6eb62648c4e2cffdaab2f740daeeb50405e9883f45d";
 
@@ -360,7 +375,7 @@ async function handleRecomputeStats(env) {
   // check.
   const pool = new SimplePool();
   try {
-    const receipts = await pool.querySync(DEFAULT_RELAYS, {
+    const receipts = await pool.querySync(ZAP_SEARCH_RELAYS, {
       kinds: [9735],
       "#p": [SOUND_COFFEE_PUBKEY],
     });
@@ -382,7 +397,7 @@ async function handleRecomputeStats(env) {
       }
     }
   } finally {
-    pool.close(DEFAULT_RELAYS);
+    pool.close(ZAP_SEARCH_RELAYS);
   }
 
   // Aggregate per pubkey.
@@ -958,7 +973,7 @@ async function pollPendingPayments(env) {
 async function pollZapReceiptsFromRelays(env) {
   const pool = new SimplePool();
   try {
-    const receipts = await pool.querySync(DEFAULT_RELAYS, {
+    const receipts = await pool.querySync(ZAP_SEARCH_RELAYS, {
       kinds: [9735],
       "#p": [SOUND_COFFEE_PUBKEY],
       since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 7,
@@ -1004,7 +1019,7 @@ async function pollZapReceiptsFromRelays(env) {
       }
     }
   } finally {
-    pool.close(DEFAULT_RELAYS);
+    pool.close(ZAP_SEARCH_RELAYS);
   }
 }
 
@@ -1021,7 +1036,7 @@ async function pollZapReceiptsFromRelays(env) {
 async function pollEcosystemBoostNotes(env) {
   const pool = new SimplePool();
   try {
-    const notes = await pool.querySync(DEFAULT_RELAYS, {
+    const notes = await pool.querySync(ZAP_SEARCH_RELAYS, {
       kinds: [1],
       "#i": [SHOW_I_TAG],
       since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 7,
@@ -1067,7 +1082,7 @@ async function pollEcosystemBoostNotes(env) {
       }
     }
   } finally {
-    pool.close(DEFAULT_RELAYS);
+    pool.close(ZAP_SEARCH_RELAYS);
   }
 }
 
