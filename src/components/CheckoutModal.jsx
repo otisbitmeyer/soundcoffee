@@ -574,21 +574,8 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
                 </div>
               )}
 
-              {(shippingCoord || listing.shippingCost) && (
-                <div className="border-t-2 border-ink/10 pt-3 text-xs text-ink/60">
-                  {shippingLoading ? (
-                    "Loading shipping option…"
-                  ) : shippingOption ? (
-                    <p>
-                      {shippingOption.title}
-                      {shippingSats
-                        ? ` — ${formatDualPrice({ sats: shippingSats, usdCents: shippingUsdCents })}`
-                        : " — free"}
-                    </p>
-                  ) : (
-                    "Couldn't load the shipping option for this listing."
-                  )}
-                </div>
+              {shippingLoading && (
+                <p className="text-xs text-ink/40">Loading shipping option…</p>
               )}
 
               {error && (

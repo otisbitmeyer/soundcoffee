@@ -6,17 +6,37 @@ import VariantPicker from "./VariantPicker";
 import ImageGallery from "./ImageGallery";
 import { getVariationsOf } from "@/hooks/useNip99Listings";
 import { buyButtonLabel } from "@/lib/buyButtonLabel";
+import { useBtcUsdPrice } from "@/hooks/useBtcUsdPrice";
+import { formatDualPrice } from "@/lib/formatPrice";
 
 const SUMMARY_LIMIT = 90;
 
-function formatPrice(price) {
+function satsFromSatsOrBtc(price) {
+  const currency = (price.currency || "").toLowerCase();
+  if (currency === "sat" || currency === "sats") return Math.round(Number(price.amount));
+  if (currency === "btc") return Math.round(Number(price.amount) * 100_000_000);
+  return null;
+}
+
+function formatPrice(price, btcUsdPrice) {
   if (!price) return null;
-  const { amount, currency, frequency } = price;
-  const isSats = /^(sat|sats|btc)$/i.test(currency || "");
-  const label = isSats
-    ? `${Number(amount).toLocaleString()} sats`
-    : `${amount} ${currency}`;
-  return frequency ? `${label} / ${frequency}` : label;
+  const isFiatUsd = (price.currency || "").toLowerCase() === "usd";
+  const directSats = satsFromSatsOrBtc(price);
+
+  const sats = directSats ?? (isFiatUsd && btcUsdPrice ? Math.round((Number(price.amount) / btcUsdPrice) * 100_000_000) : null);
+  const usdCents = isFiatUsd
+    ? Math.round(Number(price.amount) * 100)
+    : directSats && btcUsdPrice
+    ? Math.round((directSats / 100_000_000) * btcUsdPrice * 100)
+    : null;
+
+  const dual = formatDualPrice({ sats, usdCents });
+  if (dual) return price.frequency ? `${dual} / ${price.frequency}` : dual;
+
+  // Fallback if we can't derive both (e.g. price feed hasn't loaded yet)
+  // — still show whatever currency the listing is actually priced in.
+  const label = `${price.amount} ${price.currency}`;
+  return price.frequency ? `${label} / ${price.frequency}` : label;
 }
 
 export default function ProductCard({ listing, sellerPubkey, allListings }) {
@@ -24,6 +44,7 @@ export default function ProductCard({ listing, sellerPubkey, allListings }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [chosenVariation, setChosenVariation] = useState(null);
   const [expanded, setExpanded] = useState(false);
+  const { btcUsdPrice } = useBtcUsdPrice();
 
   const isVariable = listing.productType === "variable";
   const variations = isVariable ? getVariationsOf(allListings, listing.coordinate) : [];
@@ -32,7 +53,7 @@ export default function ProductCard({ listing, sellerPubkey, allListings }) {
     ? variations.length > 0
       ? "SEE OPTIONS"
       : null
-    : formatPrice(listing.price);
+    : formatPrice(listing.price, btcUsdPrice);
 
   // Prefer the longer markdown content for the expanded view, falling
   // back to the summary if that's all there is.

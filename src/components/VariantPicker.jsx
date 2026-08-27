@@ -3,18 +3,37 @@
 import { useState, useMemo } from "react";
 import ImageGallery from "./ImageGallery";
 import { buyButtonLabel } from "@/lib/buyButtonLabel";
+import { useBtcUsdPrice } from "@/hooks/useBtcUsdPrice";
+import { formatDualPrice } from "@/lib/formatPrice";
 
-function formatPrice(price) {
+function satsFromSatsOrBtc(price) {
+  const currency = (price.currency || "").toLowerCase();
+  if (currency === "sat" || currency === "sats") return Math.round(Number(price.amount));
+  if (currency === "btc") return Math.round(Number(price.amount) * 100_000_000);
+  return null;
+}
+
+function formatPrice(price, btcUsdPrice) {
   if (!price) return null;
-  const { amount, currency, frequency } = price;
-  const isSats = /^(sat|sats|btc)$/i.test(currency || "");
-  const label = isSats
-    ? `${Number(amount).toLocaleString()} sats`
-    : `${amount} ${currency}`;
-  return frequency ? `${label} / ${frequency}` : label;
+  const isFiatUsd = (price.currency || "").toLowerCase() === "usd";
+  const directSats = satsFromSatsOrBtc(price);
+
+  const sats = directSats ?? (isFiatUsd && btcUsdPrice ? Math.round((Number(price.amount) / btcUsdPrice) * 100_000_000) : null);
+  const usdCents = isFiatUsd
+    ? Math.round(Number(price.amount) * 100)
+    : directSats && btcUsdPrice
+    ? Math.round((directSats / 100_000_000) * btcUsdPrice * 100)
+    : null;
+
+  const dual = formatDualPrice({ sats, usdCents });
+  if (dual) return price.frequency ? `${dual} / ${price.frequency}` : dual;
+
+  const label = `${price.amount} ${price.currency}`;
+  return price.frequency ? `${label} / ${price.frequency}` : label;
 }
 
 export default function VariantPicker({ parentListing, variations, onSelect, onClose }) {
+  const { btcUsdPrice } = useBtcUsdPrice();
   // Collect every distinct attribute key across all variations (e.g.
   // "size", "color") and the values available for each, so we can render
   // one selector per attribute rather than assuming a fixed shape.
@@ -106,7 +125,7 @@ export default function VariantPicker({ parentListing, variations, onSelect, onC
                 />
               )}
               <p className="font-display text-lg text-rust">
-                {formatPrice(matchedVariation.price)}
+                {formatPrice(matchedVariation.price, btcUsdPrice)}
               </p>
               {matchedVariation.status === "sold" && (
                 <p className="mt-1 font-serif text-xs text-rust">
