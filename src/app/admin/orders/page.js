@@ -38,27 +38,59 @@ function getTag(event, name) {
 function parseOrder(rumor) {
   if (rumor.kind !== 16 && rumor.kind !== 4) return null;
   const typeTag = getTag(rumor, "type");
-  if (typeTag?.[1] !== "1") return null;
+  // Different Gamma implementations chose different conventions here —
+  // our own numeric code ("1", per the spec doc we followed) and
+  // Conduit's human-readable one ("order") mean exactly the same thing.
+  if (typeTag?.[1] !== "1" && typeTag?.[1] !== "order") return null;
+
+  // Our own checkout puts shipping/contact info in plain outer tags.
+  // Conduit nests it inside the (already-decrypted) JSON content
+  // instead — same privacy properties either way, just a different
+  // convention. Try tags first, fall back to whatever the content JSON
+  // has under any of the field names we've actually seen used.
+  let contentJson = null;
+  try {
+    contentJson = JSON.parse(rumor.content);
+  } catch {
+    // Not JSON — likely our own freeform notes text, which is fine,
+    // that's handled separately below.
+  }
 
   return {
-    orderId: getTag(rumor, "order")?.[1],
+    orderId: getTag(rumor, "order")?.[1] || contentJson?.id || contentJson?.orderId,
     buyerPubkey: rumor.pubkey,
-    amountSats: Number(getTag(rumor, "amount")?.[1] || 0),
+    amountSats: Number(getTag(rumor, "amount")?.[1] || contentJson?.amount || 0),
     items: rumor.tags.filter((t) => t[0] === "item").map((t) => ({
       coordinate: t[1],
       quantity: t[2] || "1",
     })),
-    address: getTag(rumor, "address")?.[1] || null,
-    email: getTag(rumor, "email")?.[1] || null,
-    phone: getTag(rumor, "phone")?.[1] || null,
-    notes: rumor.content || "",
+    address:
+      getTag(rumor, "address")?.[1] ||
+      contentJson?.address ||
+      contentJson?.shippingAddress ||
+      contentJson?.shipping?.address ||
+      null,
+    email: getTag(rumor, "email")?.[1] || contentJson?.email || contentJson?.buyerEmail || null,
+    phone: getTag(rumor, "phone")?.[1] || contentJson?.phone || null,
+    notes: contentJson ? contentJson.notes || contentJson.message || "" : rumor.content || "",
     createdAt: rumor.created_at,
   };
 }
 
 function parseReceipt(rumor) {
-  if (rumor.kind !== 17) return null;
-  return { orderId: getTag(rumor, "order")?.[1], createdAt: rumor.created_at };
+  if (rumor.kind === 17) {
+    return { orderId: getTag(rumor, "order")?.[1], createdAt: rumor.created_at };
+  }
+  // Conduit sends payment confirmation as a kind 16 message with
+  // type "payment_proof", not a dedicated kind 17 — same purpose,
+  // different convention, same as the "order" vs "1" split above.
+  if (rumor.kind === 16 || rumor.kind === 4) {
+    const typeTag = getTag(rumor, "type");
+    if (typeTag?.[1] === "payment_proof") {
+      return { orderId: getTag(rumor, "order")?.[1], createdAt: rumor.created_at };
+    }
+  }
+  return null;
 }
 
 /** General communication (kind 14, or kind 4 for NIP-04 apps) tied to an order via its subject tag. */
