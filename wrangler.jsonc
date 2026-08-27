@@ -22,7 +22,7 @@
     {
       "binding": "DB",
       "database_name": "soundcoffee-orders",
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+      "database_id": "054a2a7a-a7ed-44fb-b2f1-72c5bb492543"
     }
   ]
 }
