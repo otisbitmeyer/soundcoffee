@@ -1010,6 +1010,11 @@ async function handlePodcastFeed(request, env) {
   }
 }
 
+async function handleGetRelays(env) {
+  const relays = await getZapSearchRelays(env);
+  return jsonResponse({ relays });
+}
+
 async function handleFetch(request, env) {
   const url = new URL(request.url);
 
@@ -1069,6 +1074,9 @@ async function handleFetch(request, env) {
   }
   if (request.method === "GET" && url.pathname === "/api/club-members") {
     return handleClubMembers(env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/relays") {
+    return handleGetRelays(env);
   }
   if (request.method === "POST" && url.pathname === "/api/admin/recompute-stats") {
     return handleRecomputeStats(env);

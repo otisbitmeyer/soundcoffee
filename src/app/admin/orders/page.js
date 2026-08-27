@@ -346,8 +346,23 @@ export default function OrdersPage() {
         }));
 
         const ownDmRelays = await getDmRelaysFor(SOUND_COFFEE_PUBKEY);
+
+        // The same dynamically-refreshed pool of currently-active relays
+        // the backend uses for zap detection — previously this page only
+        // ever searched a small hand-maintained list, meaning an order
+        // published anywhere outside it would never be found regardless
+        // of which specific relays we'd individually added.
+        let dynamicRelays = [];
+        try {
+          const relaysRes = await fetch("/api/relays");
+          const relaysData = await relaysRes.json();
+          dynamicRelays = relaysData.relays || [];
+        } catch {
+          // Falls back to the static list below — never a hard failure.
+        }
+
         const searchRelays = [
-          ...new Set([...ownDmRelays, ...DEFAULT_RELAYS, ...EXTRA_SEARCH_RELAYS]),
+          ...new Set([...ownDmRelays, ...DEFAULT_RELAYS, ...EXTRA_SEARCH_RELAYS, ...dynamicRelays]),
         ];
         setRelaysSearched(searchRelays);
 
