@@ -283,6 +283,7 @@ export default function OrdersPage() {
   const [expandedOrderId, setExpandedOrderId] = useState(null);
   const [loadProgress, setLoadProgress] = useState(null);
   const [relaysSearched, setRelaysSearched] = useState([]);
+  const [diagnostics, setDiagnostics] = useState(null);
   const [error, setError] = useState(null);
   const [showAllOrders, setShowAllOrders] = useState(false); // default: paid-only
   const [dismissedIds, setDismissedIds] = useState(new Set());
@@ -385,6 +386,19 @@ export default function OrdersPage() {
         );
         const foundMessages = {};
 
+        // Real diagnostics instead of silently swallowing every failure —
+        // this is what tells us WHERE something breaks (never retrieved
+        // vs. retrieved-but-undecryptable vs. decrypted-but-irrelevant)
+        // instead of just "nothing showed up."
+        const diag = {
+          totalEventsFound: events.length,
+          kind1059Count: events.filter((e) => e.kind === 1059).length,
+          kind4Count: events.filter((e) => e.kind === 4).length,
+          decryptFailures: 0,
+          decryptedNotOrderRelated: 0,
+          firstError: null,
+        };
+
         for (let i = 0; i < events.length; i++) {
           const event = events[i];
           try {
@@ -409,21 +423,24 @@ export default function OrdersPage() {
             }
 
             const order = parseOrder(rumor);
-            if (order && !d1OrderIds.has(order.orderId)) foundOrders.push(order);
-
             const receipt = parseReceipt(rumor);
-            if (receipt?.orderId) foundPaidIds.add(receipt.orderId);
-
             const message = parseMessage(rumor);
+            if (!order && !receipt && !message) diag.decryptedNotOrderRelated++;
+
+            if (order && !d1OrderIds.has(order.orderId)) foundOrders.push(order);
+            if (receipt?.orderId) foundPaidIds.add(receipt.orderId);
             if (message) {
               if (!foundMessages[message.orderId]) foundMessages[message.orderId] = [];
               foundMessages[message.orderId].push(message);
             }
-          } catch {
-            // Not addressed to us in a way we can decrypt, or malformed.
+          } catch (e) {
+            diag.decryptFailures++;
+            if (!diag.firstError) diag.firstError = `${e.message || e} (kind ${event.kind})`;
           }
           if (!cancelled) setLoadProgress({ done: i + 1, total: events.length });
         }
+
+        if (!cancelled) setDiagnostics(diag);
 
         if (cancelled) return;
         foundOrders.sort((a, b) => b.createdAt - a.createdAt);
@@ -595,6 +612,38 @@ export default function OrdersPage() {
                 orders somewhere we&rsquo;re actually looking.
               </p>
             </details>
+          )}
+
+          {isRightAccount && diagnostics && (
+            <div className="mx-auto mt-4 max-w-2xl border-2 border-jade/40 bg-jade/5 p-4 text-center font-serif text-xs text-ink/70">
+              <p className="font-display tracking-widest text-jade">
+                DIAGNOSTIC — LAST SEARCH
+              </p>
+              <p className="mt-2">
+                Found {diagnostics.totalEventsFound} encrypted message
+                {diagnostics.totalEventsFound === 1 ? "" : "s"} addressed
+                to you ({diagnostics.kind1059Count} NIP-17,{" "}
+                {diagnostics.kind4Count} NIP-04).
+              </p>
+              <p className="mt-1">
+                {diagnostics.decryptFailures > 0 ? (
+                  <span className="text-rust">
+                    {diagnostics.decryptFailures} failed to decrypt.
+                  </span>
+                ) : (
+                  <span className="text-jade">
+                    All of them decrypted successfully.
+                  </span>
+                )}{" "}
+                {diagnostics.decryptedNotOrderRelated} decrypted fine but
+                weren&rsquo;t order/receipt/message content.
+              </p>
+              {diagnostics.firstError && (
+                <p className="mt-2 border-t border-ink/10 pt-2 font-mono text-[11px] text-rust">
+                  First error: {diagnostics.firstError}
+                </p>
+              )}
+            </div>
           )}
 
           {isRightAccount && error && (
