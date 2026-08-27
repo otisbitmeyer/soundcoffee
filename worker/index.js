@@ -262,6 +262,27 @@ async function handleNotifyOrder(request, env) {
   return jsonResponse({ ok: true, results });
 }
 
+async function handleNotifyShipped(request, env) {
+  const { orderId, buyerEmail, itemTitle, trackingNumber, carrier } = await request.json();
+  if (!orderId) return jsonResponse({ error: "Missing orderId." }, 422);
+  if (!buyerEmail) return jsonResponse({ ok: true, skipped: "no email on file" });
+
+  const trackingLine = trackingNumber
+    ? `\n\nTracking: ${trackingNumber}${carrier ? ` (${carrier})` : ""}`
+    : "";
+
+  try {
+    await sendEmail(env, {
+      to: buyerEmail,
+      subject: `Your Sound Coffee order has shipped! (${orderId})`,
+      text: `Good news — your order${itemTitle ? ` for ${itemTitle}` : ""} is on its way.${trackingLine}`,
+    });
+    return jsonResponse({ ok: true, sent: true });
+  } catch (e) {
+    return jsonResponse({ error: e.message }, 502);
+  }
+}
+
 async function handleEpisodeZaps(request, env) {
   const url = new URL(request.url);
   const guid = url.searchParams.get("guid");
@@ -650,6 +671,18 @@ async function handleConfirmOrderD1(request, env) {
   return jsonResponse({ ok: true });
 }
 
+async function handleMarkShipped(request, env) {
+  const { id, trackingNumber, carrier } = await request.json();
+  if (!id) return jsonResponse({ error: "Missing id." }, 422);
+  const now = Date.now();
+  await env.DB.prepare(
+    `UPDATE orders SET fulfillment_status = 'shipped', tracking_number = ?, carrier = ?, shipped_at = ?, updated_at = ? WHERE id = ?`
+  )
+    .bind(trackingNumber || null, carrier || null, now, now, id)
+    .run();
+  return jsonResponse({ ok: true });
+}
+
 async function handleFetch(request, env) {
   const url = new URL(request.url);
 
@@ -664,6 +697,9 @@ async function handleFetch(request, env) {
   }
   if (request.method === "POST" && url.pathname === "/api/notify-order") {
     return handleNotifyOrder(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/notify-shipped") {
+    return handleNotifyShipped(request, env);
   }
   if (request.method === "POST" && url.pathname === "/api/create-checkout-session") {
     return handleCreateCheckoutSession(request, env);
@@ -688,6 +724,9 @@ async function handleFetch(request, env) {
   }
   if (request.method === "POST" && url.pathname === "/api/orders/confirm") {
     return handleConfirmOrderD1(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/orders/ship") {
+    return handleMarkShipped(request, env);
   }
   if (request.method === "GET" && url.pathname === "/api/club-members") {
     return handleClubMembers(env);

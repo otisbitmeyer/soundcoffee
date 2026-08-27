@@ -107,9 +107,12 @@ function ItemNames({ items, listings }) {
   );
 }
 
-function OrderDetail({ order, messages, onSend }) {
+function OrderDetail({ order, messages, onSend, onMarkShipped }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [tracking, setTracking] = useState(order.trackingNumber || "");
+  const [carrier, setCarrier] = useState(order.carrier || "");
+  const [shipping, setShipping] = useState(false);
   const { profile: buyerProfile } = useProfile(order.buyerPubkey);
 
   async function handleSend() {
@@ -123,9 +126,18 @@ function OrderDetail({ order, messages, onSend }) {
     }
   }
 
+  async function handleMarkShipped() {
+    setShipping(true);
+    try {
+      await onMarkShipped(order, { trackingNumber: tracking.trim(), carrier: carrier.trim() });
+    } finally {
+      setShipping(false);
+    }
+  }
+
   return (
     <tr>
-      <td colSpan={9} className="bg-ink/5 px-4 py-4">
+      <td colSpan={10} className="bg-ink/5 px-4 py-4">
         <div className="grid gap-6 sm:grid-cols-2">
           <div className="font-serif text-sm text-ink/80">
             <p className="font-display text-xs tracking-widest text-ink/50">
@@ -144,6 +156,50 @@ function OrderDetail({ order, messages, onSend }) {
                 </p>
                 <p className="mt-1">{order.notes}</p>
               </>
+            )}
+
+            {order.fromD1 && (
+              <div className="mt-4 border-t border-ink/10 pt-3">
+                <p className="font-display text-xs tracking-widest text-ink/50">
+                  FULFILLMENT
+                </p>
+                {order.fulfillmentStatus === "shipped" ? (
+                  <p className="mt-1 text-jade">
+                    📦 Shipped
+                    {order.trackingNumber ? ` — ${order.trackingNumber}` : ""}
+                    {order.carrier ? ` (${order.carrier})` : ""}
+                  </p>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    <div className="flex gap-2">
+                      <input
+                        value={tracking}
+                        onChange={(e) => setTracking(e.target.value)}
+                        placeholder="Tracking number (optional)"
+                        className="flex-1 border-2 border-ink/30 px-2 py-1.5 text-xs focus:border-ink focus:outline-none"
+                      />
+                      <input
+                        value={carrier}
+                        onChange={(e) => setCarrier(e.target.value)}
+                        placeholder="Carrier (optional)"
+                        className="w-28 border-2 border-ink/30 px-2 py-1.5 text-xs focus:border-ink focus:outline-none"
+                      />
+                    </div>
+                    <button
+                      onClick={handleMarkShipped}
+                      disabled={shipping}
+                      className="w-full border-2 border-ink bg-ink px-3 py-2 font-display text-xs tracking-widest text-paper hover:bg-jade hover:border-jade disabled:opacity-50"
+                    >
+                      {shipping ? "MARKING SHIPPED…" : "📦 MARK SHIPPED & NOTIFY"}
+                    </button>
+                    <p className="text-[11px] italic text-ink/40">
+                      Notifies by Nostr DM if they were signed in, and by
+                      email if they left an address. Neither, if
+                      neither applies — nothing to send it to.
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -282,6 +338,9 @@ export default function OrdersPage() {
           createdAt: Math.floor(o.created_at / 1000),
           paymentMethod: o.payment_method,
           paidD1: o.payment_status === "paid",
+          fulfillmentStatus: o.fulfillment_status || "unfulfilled",
+          trackingNumber: o.tracking_number,
+          carrier: o.carrier,
           fromD1: true,
         }));
 
@@ -404,6 +463,56 @@ export default function OrdersPage() {
     }));
   }
 
+  async function handleMarkShipped(order, { trackingNumber, carrier }) {
+    // Update D1 first — this is the record of truth, and should succeed
+    // even if the notification step below has trouble.
+    await fetch("/api/orders/ship", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: order.orderId, trackingNumber, carrier }),
+    });
+
+    const trackingLine = trackingNumber
+      ? `\n\nTracking: ${trackingNumber}${carrier ? ` (${carrier})` : ""}`
+      : "";
+    const messageText = `📦 Your order has shipped!${trackingLine}`;
+
+    // Nostr DM — only meaningful if they have a real (or at least
+    // reachable) identity, same rule as regular order messaging.
+    const canMessageViaNostr = !(order.isGuest && !order.email);
+    if (canMessageViaNostr && order.buyerPubkey) {
+      try {
+        await handleSendMessage(order, messageText);
+      } catch {
+        // best-effort — D1 update above already succeeded either way
+      }
+    }
+
+    // Email — independent of the Nostr path, sent if they left an address.
+    if (order.email) {
+      fetch("/api/notify-shipped", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: order.orderId,
+          buyerEmail: order.email,
+          itemTitle: order.items?.[0]?.title,
+          trackingNumber,
+          carrier,
+        }),
+      }).catch(() => {});
+    }
+
+    // Reflect the change immediately without needing a full reload.
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.orderId === order.orderId
+          ? { ...o, fulfillmentStatus: "shipped", trackingNumber, carrier }
+          : o
+      )
+    );
+  }
+
   return (
     <>
       <Header />
@@ -502,7 +611,7 @@ export default function OrdersPage() {
                 }
 
                 return (
-                <table className="w-full border-collapse text-left font-serif text-sm">
+                <table key={showAllOrders ? "all" : "paid"} className="w-full border-collapse text-left font-serif text-sm">
                   <thead>
                     <tr className="border-b-2 border-ink font-display text-xs tracking-widest text-ink/60">
                       <th className="py-2 pr-4">ORDER #</th>
@@ -512,6 +621,7 @@ export default function OrdersPage() {
                       <th className="py-2 pr-4">METHOD</th>
                       <th className="py-2 pr-4">AMOUNT</th>
                       <th className="py-2 pr-4">STATUS</th>
+                      <th className="py-2 pr-4">SHIPPING</th>
                       <th className="py-2 pr-4">MESSAGES</th>
                       <th className="py-2"></th>
                     </tr>
@@ -564,6 +674,15 @@ export default function OrdersPage() {
                                 <span className="text-rust">Awaiting payment</span>
                               )}
                             </td>
+                            <td className="py-3 pr-4 text-xs">
+                              {order.fulfillmentStatus === "shipped" ? (
+                                <span className="text-jade">📦 Shipped</span>
+                              ) : order.fromD1 ? (
+                                <span className="text-ink/50">Unshipped</span>
+                              ) : (
+                                <span className="text-ink/30">—</span>
+                              )}
+                            </td>
                             <td className="py-3 pr-4 text-xs text-ink/50">
                               {msgCount > 0 ? `${msgCount} 💬` : "—"}
                             </td>
@@ -590,6 +709,7 @@ export default function OrdersPage() {
                               order={order}
                               messages={messagesByOrder[order.orderId] || []}
                               onSend={handleSendMessage}
+                              onMarkShipped={handleMarkShipped}
                             />
                           )}
                         </Fragment>
