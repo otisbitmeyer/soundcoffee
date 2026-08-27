@@ -22,6 +22,7 @@ const EXTRA_SEARCH_RELAYS = [
   "wss://offchain.pub",
   "wss://relay.mostr.pub",
   "wss://relay.nostrplebs.com",
+  "wss://relay.conduit.market",
 ];
 
 let publishPool;

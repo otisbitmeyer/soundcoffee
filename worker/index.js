@@ -39,6 +39,7 @@ const ZAP_SEARCH_RELAYS = [
   "wss://offchain.pub",
   "wss://relay.mostr.pub",
   "wss://relay.nostrplebs.com",
+  "wss://relay.conduit.market",
 ];
 
 const RELAY_CACHE_KEY = "nostr-watch-relay-cache";
