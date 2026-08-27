@@ -31,9 +31,11 @@ export function usePodcastFeed(feedUrl) {
     setLoading(true);
     setError(false);
 
-    const proxyUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(
-      feedUrl
-    )}&count=100`;
+    // Our own feed proxy — replaces rss2json, whose free tier turned out
+    // to be unreliable (rejects requests above its default item count,
+    // and rate-limits aggressively even at the default). No artificial
+    // caps, no third-party dependency in the request path.
+    const proxyUrl = `/api/podcast-feed?url=${encodeURIComponent(feedUrl)}`;
 
     fetch(proxyUrl)
       .then((res) => res.json())
@@ -48,13 +50,13 @@ export function usePodcastFeed(feedUrl) {
           link: item.link,
           pubDate: item.pubDate,
           description: item.description,
-          audioUrl: item.enclosure?.link || null,
+          audioUrl: item.audioUrl || null,
           guid: item.guid,
         }));
         const info = {
-          title: data.feed?.title,
-          description: data.feed?.description,
-          image: data.feed?.image,
+          title: data.feedInfo?.title,
+          description: data.feedInfo?.description,
+          image: data.feedInfo?.image,
         };
         cache.set(feedUrl, { episodes: parsed, feedInfo: info });
         setEpisodes(parsed);

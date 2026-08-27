@@ -888,6 +888,93 @@ async function handleGetInventory(request, env) {
   return jsonResponse({ coordinate, available });
 }
 
+// ---------------------------------------------------------------------
+// Podcast feed proxy — replaces rss2json, whose free tier turned out to
+// be genuinely unreliable (rejects requests outright above its default
+// item count, and rate-limits aggressively even at the default). This
+// fetches the real feed XML server-side (no CORS issue — that's only a
+// browser restriction) and parses it directly, with no artificial caps
+// and no third-party dependency in the request path at all.
+// ---------------------------------------------------------------------
+
+function decodeXmlEntities(str) {
+  if (!str) return str;
+  return str
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .trim();
+}
+
+function extractTag(block, tagName) {
+  // Matches both <tag>...</tag> and self-describing namespaced tags like
+  // <content:encoded>...</content:encoded>. Not a full XML parser — just
+  // enough to reliably pull standard podcast RSS fields.
+  const match = block.match(new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)</${tagName}>`, "i"));
+  return match ? decodeXmlEntities(match[1]) : null;
+}
+
+function extractAttr(block, tagName, attrName) {
+  const match = block.match(new RegExp(`<${tagName}[^>]*\\s${attrName}=["']([^"']*)["']`, "i"));
+  return match ? decodeXmlEntities(match[1]) : null;
+}
+
+function parsePodcastRss(xml) {
+  const channelMatch = xml.match(/<channel[^>]*>([\s\S]*?)<item[^>]*>/i);
+  let channelBlock = channelMatch ? channelMatch[1] : "";
+
+  // Podhome (and possibly other hosts) embed <podcast:liveItem> blocks
+  // for live-streamed episodes, appearing BEFORE the real channel info
+  // and carrying their own <title>/<description>/<guid> tags. Left in
+  // place, those would get matched first instead of the show's actual
+  // title — strip them out before extracting channel-level fields.
+  channelBlock = channelBlock.replace(/<podcast:liveItem[^>]*>[\s\S]*?<\/podcast:liveItem>/gi, "");
+
+  const feedInfo = {
+    title: extractTag(channelBlock, "title"),
+    description: extractTag(channelBlock, "description"),
+    image:
+      extractAttr(channelBlock, "itunes:image", "href") ||
+      extractTag(channelBlock, "url"), // <image><url>...</url></image>
+  };
+
+  const itemBlocks = xml.match(/<item[^>]*>[\s\S]*?<\/item>/gi) || [];
+  const items = itemBlocks.map((block) => ({
+    title: extractTag(block, "title"),
+    link: extractTag(block, "link"),
+    pubDate: extractTag(block, "pubDate"),
+    description: extractTag(block, "content:encoded") || extractTag(block, "description"),
+    audioUrl: extractAttr(block, "enclosure", "url"),
+    guid: extractTag(block, "guid"),
+  }));
+
+  return { feedInfo, items };
+}
+
+async function handlePodcastFeed(request, env) {
+  const url = new URL(request.url);
+  const feedUrl = url.searchParams.get("url");
+  if (!feedUrl) return jsonResponse({ error: "Missing ?url=" }, 422);
+
+  try {
+    const res = await fetch(feedUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; SoundCoffeeBot/1.0)" },
+    });
+    if (!res.ok) {
+      return jsonResponse({ error: `Feed returned ${res.status}` }, 502);
+    }
+    const xml = await res.text();
+    const { feedInfo, items } = parsePodcastRss(xml);
+    return jsonResponse({ status: "ok", feedInfo, items });
+  } catch (e) {
+    return jsonResponse({ error: e.message }, 502);
+  }
+}
+
 async function handleFetch(request, env) {
   const url = new URL(request.url);
 
@@ -941,6 +1028,9 @@ async function handleFetch(request, env) {
   }
   if (request.method === "GET" && url.pathname === "/api/inventory") {
     return handleGetInventory(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/podcast-feed") {
+    return handlePodcastFeed(request, env);
   }
   if (request.method === "GET" && url.pathname === "/api/club-members") {
     return handleClubMembers(env);
