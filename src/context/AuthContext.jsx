@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useCallback, useEffect, useRef } f
 import { generateSecretKey, getPublicKey, finalizeEvent } from "nostr-tools/pure";
 import { nsecEncode, npubEncode, decode } from "nostr-tools/nip19";
 import { getConversationKey, encrypt as nip44EncryptRaw, decrypt as nip44DecryptRaw } from "nostr-tools/nip44";
+import { decrypt as nip04DecryptRaw } from "nostr-tools/nip04";
 import { BunkerSigner, parseBunkerInput } from "nostr-tools/nip46";
 
 const AuthContext = createContext(null);
@@ -244,6 +245,30 @@ export function AuthProvider({ children }) {
     [pubkey, method, secretKey]
   );
 
+  // Older encryption standard — some apps (Conduit among them, it turns
+  // out) still send DMs this way instead of the newer NIP-17/NIP-44.
+  // Only used for reading, never for sending anything new ourselves.
+  const nip04Decrypt = useCallback(
+    async (senderPubkey, ciphertext) => {
+      if (!pubkey) throw new Error("Not logged in.");
+      if (method === "extension") {
+        if (!window.nostr?.nip04?.decrypt) {
+          throw new Error(
+            "This extension doesn't support NIP-04 decryption."
+          );
+        }
+        return window.nostr.nip04.decrypt(senderPubkey, ciphertext);
+      }
+      if (method === "bunker") {
+        if (!bunkerSignerRef.current) throw new Error("Remote signer not connected.");
+        return bunkerSignerRef.current.nip04Decrypt(senderPubkey, ciphertext);
+      }
+      if (!secretKey) throw new Error("No key available to decrypt with.");
+      return nip04DecryptRaw(secretKey, senderPubkey, ciphertext);
+    },
+    [pubkey, method, secretKey]
+  );
+
   return (
     <AuthContext.Provider
       value={{
@@ -262,6 +287,7 @@ export function AuthProvider({ children }) {
         signEvent,
         nip44Encrypt,
         nip44Decrypt,
+        nip04Decrypt,
       }}
     >
       {children}

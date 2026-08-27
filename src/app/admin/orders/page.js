@@ -36,7 +36,7 @@ function getTag(event, name) {
 }
 
 function parseOrder(rumor) {
-  if (rumor.kind !== 16) return null;
+  if (rumor.kind !== 16 && rumor.kind !== 4) return null;
   const typeTag = getTag(rumor, "type");
   if (typeTag?.[1] !== "1") return null;
 
@@ -61,9 +61,9 @@ function parseReceipt(rumor) {
   return { orderId: getTag(rumor, "order")?.[1], createdAt: rumor.created_at };
 }
 
-/** General communication (kind 14) tied to an order via its subject tag. */
+/** General communication (kind 14, or kind 4 for NIP-04 apps) tied to an order via its subject tag. */
 function parseMessage(rumor) {
-  if (rumor.kind !== 14) return null;
+  if (rumor.kind !== 14 && rumor.kind !== 4) return null;
   const orderId = getTag(rumor, "subject")?.[1];
   if (!orderId) return null;
   return {
@@ -275,7 +275,7 @@ function OrderDetail({ order, messages, onSend, onMarkShipped }) {
 }
 
 export default function OrdersPage() {
-  const { isLoggedIn, pubkey, signEvent, nip44Encrypt, nip44Decrypt, restoring } = useAuth();
+  const { isLoggedIn, pubkey, signEvent, nip44Encrypt, nip44Decrypt, nip04Decrypt, restoring } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
   const [orders, setOrders] = useState(null);
   const [paidOrderIds, setPaidOrderIds] = useState(new Set());
@@ -352,14 +352,14 @@ export default function OrdersPage() {
         setRelaysSearched(searchRelays);
 
         const pool = new SimplePool();
-        const wraps = await pool.querySync(searchRelays, {
-          kinds: [1059],
+        const events = await pool.querySync(searchRelays, {
+          kinds: [1059, 4],
           "#p": [SOUND_COFFEE_PUBKEY],
         });
         pool.close(searchRelays);
 
         if (cancelled) return;
-        setLoadProgress({ done: 0, total: wraps.length });
+        setLoadProgress({ done: 0, total: events.length });
 
         // Only orders NOT already in D1 — i.e. genuinely from other
         // marketplace apps, not our own checkout (which is already
@@ -370,9 +370,28 @@ export default function OrdersPage() {
         );
         const foundMessages = {};
 
-        for (let i = 0; i < wraps.length; i++) {
+        for (let i = 0; i < events.length; i++) {
+          const event = events[i];
           try {
-            const rumor = await unwrapGiftWrap(wraps[i], nip44Decrypt);
+            let rumor;
+            if (event.kind === 1059) {
+              // NIP-17 — double-encrypted, tags live inside the sealed
+              // rumor, not on the outer event.
+              rumor = await unwrapGiftWrap(event, nip44Decrypt);
+            } else {
+              // NIP-04 (kind 4) — the older format some apps (Conduit,
+              // it turns out) still use. Tags are NOT encrypted here,
+              // only content is — so the event itself already has
+              // everything needed except the notes field.
+              let content = "";
+              try {
+                content = await nip04Decrypt(event.pubkey, event.content);
+              } catch {
+                // Notes just won't be visible — the rest of the order
+                // (tags) is still fully readable regardless.
+              }
+              rumor = { ...event, content };
+            }
 
             const order = parseOrder(rumor);
             if (order && !d1OrderIds.has(order.orderId)) foundOrders.push(order);
@@ -388,7 +407,7 @@ export default function OrdersPage() {
           } catch {
             // Not addressed to us in a way we can decrypt, or malformed.
           }
-          if (!cancelled) setLoadProgress({ done: i + 1, total: wraps.length });
+          if (!cancelled) setLoadProgress({ done: i + 1, total: events.length });
         }
 
         if (cancelled) return;
@@ -427,7 +446,7 @@ export default function OrdersPage() {
     return () => {
       cancelled = true;
     };
-  }, [isRightAccount, nip44Decrypt]);
+  }, [isRightAccount, nip44Decrypt, nip04Decrypt]);
 
   async function handleSendMessage(order, text) {
     const eventTemplate = {
