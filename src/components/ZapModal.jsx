@@ -4,8 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import QRCode from "qrcode";
 import { SimplePool } from "nostr-tools/pool";
-import { useAuth } from "@/context/AuthContext";
 import { useProfile } from "@/hooks/useProfile";
+import { useEnsureIdentity } from "@/hooks/useEnsureIdentity";
 import { resolveLud16, buildZapRequestTemplate, requestZapInvoice } from "@/lib/zap";
 import { episodeTags, showTags } from "@/lib/episodeId";
 import { DEFAULT_RELAYS } from "@/lib/relays";
@@ -29,7 +29,7 @@ export default function ZapModal({
   onZapped,
   onClose,
 }) {
-  const { isLoggedIn, pubkey, signEvent } = useAuth();
+  const ensureIdentity = useEnsureIdentity();
   const { profile } = useProfile(recipientPubkey);
 
   const [showLogin, setShowLogin] = useState(false);
@@ -42,7 +42,9 @@ export default function ZapModal({
   const [error, setError] = useState("");
   const [canAutoDetect, setCanAutoDetect] = useState(true);
   const [zapId, setZapId] = useState(null);
+  const [guestNsec, setGuestNsec] = useState(null);
   const zapDetailsRef = useRef(null); // { amountSats, comment, episodeGuid }
+  const identityRef = useRef(null); // set once handleZap runs, reused by publishBoostNote/handleManualConfirm
   const pollRef = useRef(null);
 
   const effectiveAmount = customAmount ? Number(customAmount) : amount;
@@ -78,7 +80,8 @@ export default function ZapModal({
   // blocks the "paid" UI state if it fails.
   async function publishBoostNote() {
     const details = zapDetailsRef.current;
-    if (!details) return;
+    const identity = identityRef.current;
+    if (!details || !identity) return;
     try {
       const tags = details.episodeGuid ? episodeTags(details.episodeGuid) : showTags();
       const template = {
@@ -87,7 +90,7 @@ export default function ZapModal({
         tags: [...tags, ["amount", String(details.amountSats * 1000)], ["t", "boostagram"]],
         content: details.comment || `⚡ Boosted ${details.amountSats.toLocaleString()} sats`,
       };
-      const signed = await signEvent(template);
+      const signed = await identity.signEvent(template);
       await Promise.any(getPublishPool().publish(DEFAULT_RELAYS, signed));
     } catch {
       // best-effort — not publishing this doesn't undo the real payment
@@ -115,10 +118,6 @@ export default function ZapModal({
   }
 
   async function handleZap() {
-    if (!isLoggedIn) {
-      setShowLogin(true);
-      return;
-    }
     if (!profile?.lud16) {
       setError("This npub doesn't have a Lightning address set up yet.");
       setStatus("error");
@@ -134,6 +133,10 @@ export default function ZapModal({
     setError("");
 
     try {
+      const identity = await ensureIdentity();
+      identityRef.current = identity;
+      if (identity.isGuest) setGuestNsec(identity.nsec);
+
       const lnurlData = await resolveLud16(profile.lud16);
       const amountMsats = effectiveAmount * 1000;
 
@@ -147,7 +150,7 @@ export default function ZapModal({
         extraTags: episodeGuid ? episodeTags(episodeGuid) : showTags(),
       });
 
-      const signed = await signEvent(template);
+      const signed = await identity.signEvent(template);
 
       const { pr, verify } = await requestZapInvoice({
         callback: lnurlData.callback,
@@ -164,7 +167,7 @@ export default function ZapModal({
         body: JSON.stringify({
           id: `${signed.id}`,
           type: "zap",
-          pubkey,
+          pubkey: identity.pubkey,
           sellerPubkey: recipientPubkey,
           invoice: pr,
           verifyUrl: verify,
@@ -282,6 +285,17 @@ export default function ZapModal({
               >
                 {status === "working" ? "GENERATING INVOICE…" : "⚡ ZAP"}
               </button>
+
+              <p className="text-center text-xs text-ink/50">
+                No Nostr account needed &mdash; zapping creates a one-time
+                identity just for it, automatically.{" "}
+                <button
+                  onClick={() => setShowLogin(true)}
+                  className="text-jade underline hover:text-ink"
+                >
+                  Already have one? Log in instead
+                </button>
+              </p>
             </div>
           )}
 
@@ -337,6 +351,29 @@ export default function ZapModal({
                 PAYMENT RECEIVED
               </p>
               <p>Thanks for the boost!</p>
+
+              {guestNsec && (
+                <div className="border-2 border-ink/10 bg-ink/5 p-3 text-left text-xs">
+                  <p className="font-display tracking-widest text-ink/60">
+                    ABOUT YOUR ZAP IDENTITY
+                  </p>
+                  <p className="mt-1 text-ink/70">
+                    We created a one-time Nostr key just for this zap, so
+                    you didn&rsquo;t need an account. Nothing to do here
+                    &mdash; but if you&rsquo;d ever like to see this boost
+                    under your own name elsewhere on Nostr, this key can
+                    be imported into any Nostr app:
+                  </p>
+                  <textarea
+                    readOnly
+                    value={guestNsec}
+                    onFocus={(e) => e.target.select()}
+                    className="mt-2 w-full resize-none border-2 border-ink bg-white p-2 font-mono text-xs text-ink"
+                    rows={2}
+                  />
+                </div>
+              )}
+
               <button
                 onClick={onClose}
                 className="mt-2 w-full border-2 border-ink px-4 py-2 font-display text-sm tracking-widest text-ink hover:border-jade hover:text-jade"

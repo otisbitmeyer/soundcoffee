@@ -3,15 +3,15 @@
 import { useState, useRef } from "react";
 import QRCode from "qrcode";
 import { SimplePool } from "nostr-tools/pool";
-import { finalizeEvent } from "nostr-tools/pure";
-import { getConversationKey, encrypt as nip44EncryptRaw } from "nostr-tools/nip44";
 import { useAuth } from "@/context/AuthContext";
 import { useProfile } from "@/hooks/useProfile";
+import { useEnsureIdentity } from "@/hooks/useEnsureIdentity";
 import { resolveLud16, requestPlainInvoice } from "@/lib/zap";
 import { giftWrapForBoth } from "@/lib/nip17";
 import { DEFAULT_RELAYS, getDmRelaysFor } from "@/lib/relays";
 import { useBtcUsdPrice, usdToSats } from "@/hooks/useBtcUsdPrice";
 import { useShippingOption } from "@/hooks/useShippingOption";
+import { formatDualPrice } from "@/lib/formatPrice";
 import LoginModal from "./LoginModal";
 
 let pool;
@@ -39,7 +39,7 @@ function formatAddress({ line1, line2, city, stateRegion, zip, country }) {
 }
 
 export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
-  const { isLoggedIn, pubkey, npub, signEvent, nip44Encrypt, createGuestKeys } = useAuth();
+  const { isLoggedIn, pubkey, npub, signEvent, nip44Encrypt } = useAuth();
   const { profile: sellerProfile } = useProfile(sellerPubkey);
   const { btcUsdPrice, loading: priceLoading, error: priceError } = useBtcUsdPrice();
 
@@ -91,6 +91,17 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
   const totalSats = unitSats ? unitSats * quantity + (shippingSats || 0) : null;
   const requiresShipping = listing.format === "physical";
 
+  // Shipping's own USD-equivalent, independent of the item's currency —
+  // needed to show "X sats · $Y.YY" for shipping specifically, not just
+  // the order total.
+  const shippingUsdCents = shippingOption?.price
+    ? shippingIsFiatUsd
+      ? Math.round(Number(shippingOption.price.amount) * 100)
+      : shippingSats && btcUsdPrice
+      ? Math.round((shippingSats / 100_000_000) * btcUsdPrice * 100)
+      : null
+    : null;
+
   // For card payments, Stripe needs a USD amount regardless of how the
   // item is priced. If already USD, use that directly (more accurate
   // than converting through sats and back). Otherwise derive USD from
@@ -105,28 +116,14 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
     ? Math.round((totalSats / 100_000_000) * btcUsdPrice * 100)
     : null;
 
-  // Returns { pubkey, signEvent, nip44Encrypt } for whoever's checking
-  // out — a real logged-in user's context functions, OR a freshly
-  // generated guest identity. Guest signing/encrypting is done directly
-  // against the just-generated key rather than through the context's
-  // signEvent/nip44Encrypt, because React state updates aren't visible
-  // synchronously — those functions wouldn't see the new key until after
-  // a re-render, which is too late for the rest of this same call.
+  const ensureIdentityBase = useEnsureIdentity();
+
+  // Thin wrapper — the shared hook doesn't know about this component's
+  // "show the guest their key at the end" UI, so we capture it here.
   async function ensureIdentity() {
-    if (isLoggedIn) {
-      return { pubkey, signEvent, nip44Encrypt, isGuest: false };
-    }
-    const guest = createGuestKeys();
-    setGuestNsec(guest.nsec);
-    return {
-      pubkey: guest.pubkey,
-      isGuest: true,
-      signEvent: async (template) => finalizeEvent(template, guest.secretKey),
-      nip44Encrypt: async (recipientPubkey, plaintext) => {
-        const conversationKey = getConversationKey(guest.secretKey, recipientPubkey);
-        return nip44EncryptRaw(plaintext, conversationKey);
-      },
-    };
+    const identity = await ensureIdentityBase();
+    if (identity.isGuest) setGuestNsec(identity.nsec);
+    return identity;
   }
 
   async function sendGiftWrapped(eventTemplate, identity) {
@@ -565,16 +562,11 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
               {totalSats && (
                 <div className="border-y-2 border-ink py-3 text-center">
                   <p className="font-display text-2xl text-ink">
-                    {totalSats.toLocaleString()} sats
-                    {totalUsdCents ? (
-                      <span className="ml-2 text-ink/50">
-                        (${(totalUsdCents / 100).toFixed(2)})
-                      </span>
-                    ) : null}
+                    {formatDualPrice({ sats: totalSats, usdCents: totalUsdCents })}
                   </p>
                   {shippingSats ? (
                     <p className="mt-1 font-serif text-xs text-ink/50">
-                      includes {shippingSats.toLocaleString()} sats shipping
+                      includes {formatDualPrice({ sats: shippingSats, usdCents: shippingUsdCents })} shipping
                     </p>
                   ) : null}
                 </div>
@@ -587,7 +579,9 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
                   ) : shippingOption ? (
                     <p>
                       {shippingOption.title}
-                      {shippingSats ? ` — ${shippingSats.toLocaleString()} sats` : " — free"}
+                      {shippingSats
+                        ? ` — ${formatDualPrice({ sats: shippingSats, usdCents: shippingUsdCents })}`
+                        : " — free"}
                     </p>
                   ) : (
                     "Couldn't load the shipping option for this listing."
