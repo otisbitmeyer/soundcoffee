@@ -41,6 +41,66 @@ const ZAP_SEARCH_RELAYS = [
   "wss://relay.nostrplebs.com",
 ];
 
+const RELAY_CACHE_KEY = "nostr-watch-relay-cache";
+const RELAY_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // refresh roughly daily
+const RELAY_SAMPLE_SIZE = 25; // keep cron runs fast — not querying hundreds of relays every 5 min
+
+/**
+ * Returns the relay set to search for zaps/boosts — DEFAULT_RELAYS
+ * (always known-good) plus a sample of currently-online relays from
+ * nostr.watch's public API, refreshed roughly daily and cached in KV.
+ * If nostr.watch is unreachable, returns unexpected data, or the cache
+ * is simply empty, this always falls back to our hardcoded
+ * ZAP_SEARCH_RELAYS — a relay-discovery outage should never be able to
+ * break zap detection entirely.
+ */
+async function getZapSearchRelays(env) {
+  try {
+    const cached = await env.SOUND_COFFEE_KV.get(RELAY_CACHE_KEY);
+    if (cached) {
+      const { relays, fetchedAt } = JSON.parse(cached);
+      if (relays?.length && Date.now() - fetchedAt < RELAY_CACHE_MAX_AGE_MS) {
+        return [...new Set([...DEFAULT_RELAYS, ...relays])];
+      }
+    }
+  } catch {
+    // Malformed cache entry — fall through and refresh.
+  }
+
+  try {
+    const res = await fetch("https://api.nostr.watch/v1/online");
+    if (!res.ok) throw new Error(`nostr.watch returned ${res.status}`);
+    const data = await res.json();
+
+    // Defensive parsing — response could plausibly be a flat array of
+    // URL strings, or an array of objects with a url-like field. Never
+    // trust a third-party API's exact shape without a fallback.
+    let relayUrls = [];
+    if (Array.isArray(data)) {
+      relayUrls = data
+        .map((r) => (typeof r === "string" ? r : r?.url || r?.relay))
+        .filter((url) => typeof url === "string" && url.startsWith("wss://"));
+    }
+
+    if (relayUrls.length > 0) {
+      // A random sample rather than always the same first N — spreads
+      // coverage across different relays over time instead of only ever
+      // checking whichever ones happen to sort first.
+      const sample = relayUrls.sort(() => Math.random() - 0.5).slice(0, RELAY_SAMPLE_SIZE);
+      await env.SOUND_COFFEE_KV.put(
+        RELAY_CACHE_KEY,
+        JSON.stringify({ relays: sample, fetchedAt: Date.now() })
+      );
+      return [...new Set([...DEFAULT_RELAYS, ...sample])];
+    }
+  } catch {
+    // nostr.watch unreachable, rate-limited, or returned something we
+    // didn't expect — fall through to the safe hardcoded list below.
+  }
+
+  return ZAP_SEARCH_RELAYS;
+}
+
 const SOUND_COFFEE_PUBKEY =
   "3e8220285e34b7dd2212b6eb62648c4e2cffdaab2f740daeeb50405e9883f45d";
 
@@ -374,8 +434,9 @@ async function handleRecomputeStats(env) {
   // — this is a full historical recompute, not the usual incremental
   // check.
   const pool = new SimplePool();
+  const zapSearchRelays = await getZapSearchRelays(env);
   try {
-    const receipts = await pool.querySync(ZAP_SEARCH_RELAYS, {
+    const receipts = await pool.querySync(zapSearchRelays, {
       kinds: [9735],
       "#p": [SOUND_COFFEE_PUBKEY],
     });
@@ -397,7 +458,7 @@ async function handleRecomputeStats(env) {
       }
     }
   } finally {
-    pool.close(ZAP_SEARCH_RELAYS);
+    pool.close(zapSearchRelays);
   }
 
   // Aggregate per pubkey.
@@ -972,8 +1033,9 @@ async function pollPendingPayments(env) {
  */
 async function pollZapReceiptsFromRelays(env) {
   const pool = new SimplePool();
+  const zapSearchRelays = await getZapSearchRelays(env);
   try {
-    const receipts = await pool.querySync(ZAP_SEARCH_RELAYS, {
+    const receipts = await pool.querySync(zapSearchRelays, {
       kinds: [9735],
       "#p": [SOUND_COFFEE_PUBKEY],
       since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 7,
@@ -1019,7 +1081,7 @@ async function pollZapReceiptsFromRelays(env) {
       }
     }
   } finally {
-    pool.close(ZAP_SEARCH_RELAYS);
+    pool.close(zapSearchRelays);
   }
 }
 
@@ -1035,8 +1097,9 @@ async function pollZapReceiptsFromRelays(env) {
  */
 async function pollEcosystemBoostNotes(env) {
   const pool = new SimplePool();
+  const zapSearchRelays = await getZapSearchRelays(env);
   try {
-    const notes = await pool.querySync(ZAP_SEARCH_RELAYS, {
+    const notes = await pool.querySync(zapSearchRelays, {
       kinds: [1],
       "#i": [SHOW_I_TAG],
       since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 7,
@@ -1082,7 +1145,7 @@ async function pollEcosystemBoostNotes(env) {
       }
     }
   } finally {
-    pool.close(ZAP_SEARCH_RELAYS);
+    pool.close(zapSearchRelays);
   }
 }
 
