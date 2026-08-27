@@ -184,6 +184,28 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
       const newOrderId = crypto.randomUUID();
       setOrderId(newOrderId);
 
+      // Reserve stock before doing anything else — if it's sold out,
+      // stop here rather than sending an order message for something
+      // that can't actually be fulfilled. Holds automatically expire on
+      // their own if checkout is abandoned, so nothing needs cleanup.
+      const reserveRes = await fetch("/api/inventory/reserve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: newOrderId,
+          items: [{ coordinate: listing.coordinate, quantity }],
+        }),
+      });
+      const reserveData = await reserveRes.json();
+      if (!reserveRes.ok) {
+        const failure = reserveData.failures?.[0];
+        throw new Error(
+          failure
+            ? `Sorry — only ${failure.available} left in stock, and you requested ${failure.requested}.`
+            : "That item just sold out."
+        );
+      }
+
       const orderTags = [
         ["p", sellerPubkey],
         ["subject", `Order: ${listing.title}`],

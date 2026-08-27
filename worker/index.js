@@ -657,11 +657,18 @@ async function handleListOrders(request, env) {
 
 /** Marks an order paid — idempotent, safe to call more than once for the same order. */
 async function markOrderPaid(env, orderId) {
-  await env.DB.prepare(
+  const result = await env.DB.prepare(
     `UPDATE orders SET payment_status = 'paid', updated_at = ? WHERE id = ? AND payment_status != 'paid'`
   )
     .bind(Date.now(), orderId)
     .run();
+
+  // Only commit reservations the first time an order actually transitions
+  // to paid — result.meta.changes is 0 if it was already paid, which
+  // keeps this safe to call more than once for the same order.
+  if (result.meta?.changes > 0) {
+    await commitReservationsForOrder(env, orderId);
+  }
 }
 
 async function handleConfirmOrderD1(request, env) {
@@ -681,6 +688,128 @@ async function handleMarkShipped(request, env) {
     .bind(trackingNumber || null, carrier || null, now, now, id)
     .run();
   return jsonResponse({ ok: true });
+}
+
+// ---------------------------------------------------------------------
+// Inventory reservations — reserve → commit (on paid) → naturally expire
+// (if abandoned). A reservation only ever holds stock temporarily;
+// "sold" is only real once a reservation commits. Available stock is
+// always: inventory.stock minus any still-active (unexpired) holds —
+// nothing needs a background cleanup job for correctness, an expired
+// hold is just excluded from that sum automatically.
+// ---------------------------------------------------------------------
+
+const RESERVATION_MINUTES = 15;
+
+/** Called when publishing a listing/variation with a tracked stock count. */
+async function handleInitInventory(request, env) {
+  const { productCoordinate, title, stock } = await request.json();
+  if (!productCoordinate) return jsonResponse({ error: "Missing productCoordinate." }, 422);
+  const now = Date.now();
+  await env.DB.prepare(
+    `INSERT INTO inventory (product_coordinate, title, stock, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(product_coordinate) DO UPDATE SET title = excluded.title, updated_at = excluded.updated_at`
+  )
+    .bind(productCoordinate, title || null, stock == null ? null : Number(stock), now)
+    .run();
+  return jsonResponse({ ok: true });
+}
+
+async function getAvailableStock(env, productCoordinate) {
+  const inv = await env.DB.prepare(
+    `SELECT stock FROM inventory WHERE product_coordinate = ?`
+  )
+    .bind(productCoordinate)
+    .first();
+  if (!inv || inv.stock == null) return null; // not tracked — treat as unlimited
+
+  const now = Date.now();
+  const held = await env.DB.prepare(
+    `SELECT COALESCE(SUM(quantity), 0) as total FROM reservations
+     WHERE product_coordinate = ? AND status = 'reserved' AND expires_at > ?`
+  )
+    .bind(productCoordinate, now)
+    .first();
+
+  return inv.stock - (held?.total || 0);
+}
+
+async function handleReserveInventory(request, env) {
+  const { orderId, items } = await request.json();
+  if (!orderId || !items || !Array.isArray(items)) {
+    return jsonResponse({ error: "Missing orderId or items." }, 422);
+  }
+
+  const now = Date.now();
+  const expiresAt = now + RESERVATION_MINUTES * 60 * 1000;
+  const failures = [];
+
+  for (const item of items) {
+    const available = await getAvailableStock(env, item.coordinate);
+    if (available !== null && available < item.quantity) {
+      failures.push({ coordinate: item.coordinate, available, requested: item.quantity });
+    }
+  }
+
+  if (failures.length > 0) {
+    return jsonResponse({ ok: false, error: "Not enough stock available.", failures }, 409);
+  }
+
+  for (const item of items) {
+    // Only create a reservation row for tracked products — untracked
+    // (unlimited) items don't need one.
+    const inv = await env.DB.prepare(
+      `SELECT stock FROM inventory WHERE product_coordinate = ?`
+    )
+      .bind(item.coordinate)
+      .first();
+    if (!inv || inv.stock == null) continue;
+
+    await env.DB.prepare(
+      `INSERT INTO reservations (id, order_id, product_coordinate, quantity, status, expires_at, created_at)
+       VALUES (?, ?, ?, ?, 'reserved', ?, ?)`
+    )
+      .bind(
+        `${orderId}:${item.coordinate}`,
+        orderId,
+        item.coordinate,
+        item.quantity,
+        expiresAt,
+        now
+      )
+      .run();
+  }
+
+  return jsonResponse({ ok: true, expiresAt });
+}
+
+/** Called once an order is confirmed paid — converts holds into a real, permanent stock decrease. */
+async function commitReservationsForOrder(env, orderId) {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM reservations WHERE order_id = ? AND status = 'reserved'`
+  )
+    .bind(orderId)
+    .all();
+
+  for (const r of results) {
+    await env.DB.prepare(
+      `UPDATE inventory SET stock = MAX(0, stock - ?), updated_at = ? WHERE product_coordinate = ?`
+    )
+      .bind(r.quantity, Date.now(), r.product_coordinate)
+      .run();
+    await env.DB.prepare(`UPDATE reservations SET status = 'committed' WHERE id = ?`)
+      .bind(r.id)
+      .run();
+  }
+}
+
+async function handleGetInventory(request, env) {
+  const url = new URL(request.url);
+  const coordinate = url.searchParams.get("coordinate");
+  if (!coordinate) return jsonResponse({ error: "Missing ?coordinate=" }, 422);
+  const available = await getAvailableStock(env, coordinate);
+  return jsonResponse({ coordinate, available });
 }
 
 async function handleFetch(request, env) {
@@ -727,6 +856,15 @@ async function handleFetch(request, env) {
   }
   if (request.method === "POST" && url.pathname === "/api/orders/ship") {
     return handleMarkShipped(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/inventory/init") {
+    return handleInitInventory(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/inventory/reserve") {
+    return handleReserveInventory(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/inventory") {
+    return handleGetInventory(request, env);
   }
   if (request.method === "GET" && url.pathname === "/api/club-members") {
     return handleClubMembers(env);

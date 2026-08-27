@@ -196,6 +196,22 @@ export default function SellPage() {
           };
           const signedVariant = await signEvent(variantTemplate);
           await Promise.any(pool.publish(DEFAULT_RELAYS, signedVariant));
+
+          // If this variation has a stock count, D1 becomes the
+          // authoritative tracker for it — reservations at checkout
+          // check against this, not the Nostr tag (which only updates
+          // when you click "sync stock" later).
+          if (v.stock) {
+            fetch("/api/inventory/init", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                productCoordinate: `30402:${pubkey}:${variantDTag}`,
+                title: `${title.trim()} — ${label}`,
+                stock: Number(v.stock),
+              }),
+            }).catch(() => {});
+          }
         }
 
         setPublishedEventId(signedParent.id);
