@@ -11,6 +11,15 @@ const headline = localFont({
   display: "swap",
 });
 
+// Otis's own handwriting, used as the customer-facing body font. Admin
+// pages (/admin, /admin/orders, /sell) deliberately override back to
+// Lora — see those pages for the local override.
+const handwriting = localFont({
+  src: "../fonts/handwriting/OtisbitmeyersHandwriting-Regular.ttf",
+  variable: "--font-handwriting-local",
+  display: "swap",
+});
+
 export const metadata = {
   title: "Sound Coffee",
   description: "Sound Coffee — coffee, podcast, and the club that connects them.",
@@ -20,7 +29,7 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
-      className={`${headline.variable} h-full antialiased`}
+      className={`${headline.variable} ${handwriting.variable} h-full antialiased`}
     >
       <head>
         {/* Lora (body serif) still loads from Google Fonts.

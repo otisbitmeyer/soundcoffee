@@ -205,6 +205,33 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
         identity
       );
 
+      // D1 is now the authoritative order record — created once here
+      // with a real unique id, so it can never show up twice in the
+      // dashboard the way relay-scanned Nostr DMs sometimes did.
+      fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: newOrderId,
+          customerPubkey: identity.pubkey,
+          customerEmail: email.trim() || null,
+          paymentMethod,
+          amountSats: totalSats,
+          amountUsdCents: totalUsdCents,
+          items: [{ coordinate: listing.coordinate, quantity, title: listing.title }],
+          address: {
+            line1: addressLine1.trim() || null,
+            line2: addressLine2.trim() || null,
+            city: city.trim() || null,
+            state: stateRegion.trim() || null,
+            zip: zip.trim() || null,
+            country: country.trim() || null,
+          },
+          notes: notes.trim() || null,
+          source: "soundcoffee.org",
+        }),
+      }).catch(() => {});
+
       // Email notification — a reliable fallback alongside the DM, since
       // not every Nostr client supports NIP-17 gift-wrapped messages yet.
       // Especially important for guest checkout — it's their main durable
@@ -357,9 +384,12 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-ink/80 px-4 py-8">
-      <div className="w-full max-w-md border-2 border-ink bg-paper">
-        <div className="flex items-center justify-between border-b-2 border-ink px-6 py-4">
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/80 px-4 py-8"
+      onClick={(e) => e.target === e.currentTarget && onClose?.()}
+    >
+      <div className="flex max-h-[90vh] w-full max-w-md flex-col border-2 border-ink bg-paper">
+        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b-2 border-ink bg-paper px-6 py-4">
           <h2 className="font-display text-xl tracking-wide text-ink">
             {status === "done" ? "ORDER SENT" : "CHECKOUT"}
           </h2>
@@ -372,7 +402,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
           </button>
         </div>
 
-        <div className="px-6 py-6">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
           {(status === "form" || status === "working" || status === "error") && (
             <div className="space-y-4 font-serif text-sm text-ink/80">
               <div>
@@ -516,17 +546,6 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
                 </div>
               )}
 
-              {totalSats && (
-                <p className="border-t-2 border-ink/10 pt-3 font-display text-lg text-ink">
-                  Total: {totalSats.toLocaleString()} sats
-                  {shippingSats ? (
-                    <span className="block text-xs font-serif text-ink/50">
-                      (includes {shippingSats.toLocaleString()} sats shipping)
-                    </span>
-                  ) : null}
-                </p>
-              )}
-
               {error && (
                 <p className="border-2 border-rust bg-rust/10 px-3 py-2 text-rust">
                   {error}
@@ -562,6 +581,24 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
                   >
                     {`💳 PAY WITH CARD${totalUsdCents ? ` ($${(totalUsdCents / 100).toFixed(2)})` : ""}`}
                   </button>
+                </div>
+              )}
+
+              {totalSats && (
+                <div className="border-t-2 border-ink pt-3 text-center">
+                  <p className="font-display text-2xl text-ink">
+                    {totalSats.toLocaleString()} sats
+                    {totalUsdCents ? (
+                      <span className="ml-2 text-ink/50">
+                        (${(totalUsdCents / 100).toFixed(2)})
+                      </span>
+                    ) : null}
+                  </p>
+                  {shippingSats ? (
+                    <p className="mt-1 font-serif text-xs text-ink/50">
+                      includes {shippingSats.toLocaleString()} sats shipping
+                    </p>
+                  ) : null}
                 </div>
               )}
             </div>

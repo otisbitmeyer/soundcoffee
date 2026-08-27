@@ -11,7 +11,9 @@
 
   /* Headline font: the real, licensed "Newcastle" font */
   --font-headline: var(--font-headline-local), sans-serif;
-  --font-body-serif: "Lora", serif;
+  /* Customer-facing default. Admin pages locally override this back to
+     Lora — see the .admin-fonts class below. */
+  --font-body-serif: var(--font-handwriting-local), "Lora", serif;
 }
 
 @theme inline {
@@ -26,4 +28,11 @@
 body {
   background: var(--color-paper);
   color: var(--color-ink);
+}
+
+/* Applied on /admin, /admin/orders, and /sell — keeps those working
+   pages on the plain, highly-legible Lora rather than the handwriting
+   font used everywhere customer-facing. */
+.admin-fonts {
+  --font-body-serif: "Lora", serif;
 }

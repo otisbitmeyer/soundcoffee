@@ -525,6 +525,13 @@ async function handleStripeWebhook(request, env) {
   if (event.type === "checkout.session.completed") {
     const orderId = event.data.object.metadata?.order_id;
     if (orderId) {
+      // D1 is now the authoritative order record — this is what the
+      // dashboard reads from, and it's idempotent (safe if Stripe
+      // redelivers the same webhook, which it does sometimes).
+      await markOrderPaid(env, orderId);
+
+      // Still update the KV-based club membership stats too — separate
+      // concern, unaffected by the order-record rearchitecture.
       const raw = await env.SOUND_COFFEE_KV.get(`pending:${orderId}`);
       if (raw) {
         const payment = JSON.parse(raw);
@@ -536,6 +543,94 @@ async function handleStripeWebhook(request, env) {
   }
 
   return jsonResponse({ received: true });
+}
+
+// ---------------------------------------------------------------------
+// D1 orders — the authoritative order/inventory system. Replaces relying
+// on Nostr-relay scanning alone for "what did we sell" — that approach
+// had no way to guarantee a given order is only ever counted once.
+// ---------------------------------------------------------------------
+
+async function handleCreateOrder(request, env) {
+  const body = await request.json();
+  const {
+    id,
+    customerPubkey,
+    customerEmail,
+    paymentMethod,
+    amountSats,
+    amountUsdCents,
+    items,
+    address,
+    phone,
+    notes,
+    source,
+  } = body;
+
+  if (!id || !paymentMethod || !items) {
+    return jsonResponse({ error: "Missing required fields." }, 422);
+  }
+
+  const now = Date.now();
+  await env.DB.prepare(
+    `INSERT INTO orders (
+      id, customer_pubkey, customer_email, payment_method, payment_status,
+      fulfillment_status, amount_sats, amount_usd_cents, items_json,
+      address_line1, address_line2, city, state, zip, country, phone,
+      notes, source, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, 'pending', 'unfulfilled', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO NOTHING`
+  )
+    .bind(
+      id,
+      customerPubkey || null,
+      customerEmail || null,
+      paymentMethod,
+      amountSats || null,
+      amountUsdCents || null,
+      JSON.stringify(items),
+      address?.line1 || null,
+      address?.line2 || null,
+      address?.city || null,
+      address?.state || null,
+      address?.zip || null,
+      address?.country || null,
+      phone || null,
+      notes || null,
+      source || "soundcoffee.org",
+      now,
+      now
+    )
+    .run();
+
+  return jsonResponse({ ok: true, id });
+}
+
+async function handleListOrders(request, env) {
+  const url = new URL(request.url);
+  const paidOnly = url.searchParams.get("paid") === "1";
+  const query = paidOnly
+    ? `SELECT * FROM orders WHERE payment_status = 'paid' ORDER BY created_at DESC LIMIT 300`
+    : `SELECT * FROM orders ORDER BY created_at DESC LIMIT 300`;
+  const { results } = await env.DB.prepare(query).all();
+  const orders = results.map((r) => ({ ...r, items: JSON.parse(r.items_json) }));
+  return jsonResponse({ orders });
+}
+
+/** Marks an order paid — idempotent, safe to call more than once for the same order. */
+async function markOrderPaid(env, orderId) {
+  await env.DB.prepare(
+    `UPDATE orders SET payment_status = 'paid', updated_at = ? WHERE id = ? AND payment_status != 'paid'`
+  )
+    .bind(Date.now(), orderId)
+    .run();
+}
+
+async function handleConfirmOrderD1(request, env) {
+  const { id } = await request.json();
+  if (!id) return jsonResponse({ error: "Missing id." }, 422);
+  await markOrderPaid(env, id);
+  return jsonResponse({ ok: true });
 }
 
 async function handleFetch(request, env) {
@@ -568,6 +663,15 @@ async function handleFetch(request, env) {
   if (request.method === "GET" && url.pathname === "/api/top-episodes") {
     return handleTopEpisodes(request, env);
   }
+  if (request.method === "POST" && url.pathname === "/api/orders") {
+    return handleCreateOrder(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/orders") {
+    return handleListOrders(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/orders/confirm") {
+    return handleConfirmOrderD1(request, env);
+  }
   if (request.method === "GET" && url.pathname === "/api/club-members") {
     return handleClubMembers(env);
   }
@@ -587,6 +691,13 @@ async function handleFetch(request, env) {
 async function confirmPayment(env, payment) {
   payment.status = "confirmed";
   await env.SOUND_COFFEE_KV.put(`pending:${payment.id}`, JSON.stringify(payment));
+
+  // D1 is the authoritative order record for purchases (not zaps, those
+  // aren't orders). Idempotent — safe even if this runs more than once
+  // for the same payment.
+  if (payment.type === "purchase") {
+    await markOrderPaid(env, payment.id);
+  }
 
   const sourceId = payment.type === "zap" ? `zap:${payment.id}` : `purchase:${payment.id}`;
   await recordConfirmedPayment(env, {

@@ -75,7 +75,10 @@ function parseMessage(rumor) {
 }
 
 function BuyerName({ pubkey }) {
-  const { profile } = useProfile(pubkey);
+  const { profile } = useProfile(pubkey || undefined);
+  if (!pubkey) {
+    return <div className="font-serif text-xs italic text-ink/50">No account</div>;
+  }
   const npub = nip19.npubEncode(pubkey);
   const name = profile?.display_name || profile?.name;
   return (
@@ -213,6 +216,28 @@ export default function OrdersPage() {
 
     async function load() {
       try {
+        // D1 is now the authoritative source for orders placed through
+        // this site — real primary-key uniqueness, no risk of the same
+        // order showing up twice the way relay-scanned DMs sometimes did.
+        const d1Res = await fetch("/api/orders");
+        const d1Data = await d1Res.json();
+        const d1Orders = d1Data.orders || [];
+        const d1OrderIds = new Set(d1Orders.map((o) => o.id));
+
+        const d1AsOrders = d1Orders.map((o) => ({
+          orderId: o.id,
+          buyerPubkey: o.customer_pubkey,
+          amountSats: o.amount_sats || 0,
+          items: o.items,
+          address: [o.address_line1, o.address_line2, [o.city, o.state, o.zip].filter(Boolean).join(", "), o.country].filter(Boolean).join("\n") || null,
+          email: o.customer_email,
+          phone: o.phone,
+          notes: o.notes,
+          createdAt: Math.floor(o.created_at / 1000),
+          paymentMethod: o.payment_method,
+          paidD1: o.payment_status === "paid",
+        }));
+
         const ownDmRelays = await getDmRelaysFor(SOUND_COFFEE_PUBKEY);
         const searchRelays = [
           ...new Set([...ownDmRelays, ...DEFAULT_RELAYS, ...EXTRA_SEARCH_RELAYS]),
@@ -229,8 +254,13 @@ export default function OrdersPage() {
         if (cancelled) return;
         setLoadProgress({ done: 0, total: wraps.length });
 
-        const foundOrders = [];
-        const foundPaidIds = new Set();
+        // Only orders NOT already in D1 — i.e. genuinely from other
+        // marketplace apps, not our own checkout (which is already
+        // represented via d1AsOrders above).
+        const foundOrders = [...d1AsOrders];
+        const foundPaidIds = new Set(
+          d1Orders.filter((o) => o.payment_status === "paid").map((o) => o.id)
+        );
         const foundMessages = {};
 
         for (let i = 0; i < wraps.length; i++) {
@@ -238,7 +268,7 @@ export default function OrdersPage() {
             const rumor = await unwrapGiftWrap(wraps[i], nip44Decrypt);
 
             const order = parseOrder(rumor);
-            if (order) foundOrders.push(order);
+            if (order && !d1OrderIds.has(order.orderId)) foundOrders.push(order);
 
             const receipt = parseReceipt(rumor);
             if (receipt?.orderId) foundPaidIds.add(receipt.orderId);
@@ -331,7 +361,7 @@ export default function OrdersPage() {
     <>
       <Header />
 
-      <main className="flex-1 bg-paper">
+      <main className="admin-fonts flex-1 bg-paper">
         <div className="mx-auto max-w-5xl px-6 py-16">
           <h1 className="text-center font-display text-4xl tracking-wide text-ink">
             ORDERS

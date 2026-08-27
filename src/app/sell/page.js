@@ -244,7 +244,7 @@ export default function SellPage() {
     <>
       <Header />
 
-      <main className="flex-1 bg-paper">
+      <main className="admin-fonts flex-1 bg-paper">
         <div className="mx-auto max-w-xl px-6 py-16">
           <h1 className="text-center font-display text-4xl tracking-wide text-ink">
             NEW LISTING
