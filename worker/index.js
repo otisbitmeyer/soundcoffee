@@ -607,14 +607,29 @@ async function handleCreateOrder(request, env) {
 }
 
 async function handleListOrders(request, env) {
-  const url = new URL(request.url);
-  const paidOnly = url.searchParams.get("paid") === "1";
-  const query = paidOnly
-    ? `SELECT * FROM orders WHERE payment_status = 'paid' ORDER BY created_at DESC LIMIT 300`
-    : `SELECT * FROM orders ORDER BY created_at DESC LIMIT 300`;
-  const { results } = await env.DB.prepare(query).all();
-  const orders = results.map((r) => ({ ...r, items: JSON.parse(r.items_json) }));
-  return jsonResponse({ orders });
+  try {
+    const url = new URL(request.url);
+    const paidOnly = url.searchParams.get("paid") === "1";
+    const query = paidOnly
+      ? `SELECT * FROM orders WHERE payment_status = 'paid' ORDER BY created_at DESC LIMIT 300`
+      : `SELECT * FROM orders ORDER BY created_at DESC LIMIT 300`;
+    const { results } = await env.DB.prepare(query).all();
+    const orders = results.map((r) => {
+      let items = [];
+      try {
+        items = JSON.parse(r.items_json);
+      } catch {
+        // Malformed row — don't let it take down every other order too.
+      }
+      return { ...r, items };
+    });
+    return jsonResponse({ orders });
+  } catch (e) {
+    // Surface the real error instead of letting an unhandled exception
+    // produce a generic Cloudflare error page — that would break JSON
+    // parsing client-side and show up as an unhelpful vague message.
+    return jsonResponse({ error: `Failed to load orders: ${e.message}` }, 500);
+  }
 }
 
 /** Marks an order paid — idempotent, safe to call more than once for the same order. */

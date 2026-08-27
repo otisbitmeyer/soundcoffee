@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+/* Manually defined (not next/font/local) specifically so we can control
+   size-adjust and weight — this handwriting font renders noticeably
+   smaller and thinner than Lora at the same nominal font-size, and
+   next/font's API doesn't expose the font-metric controls needed to fix
+   that. size-adjust scales the font's rendered size at any font-size
+   the page requests, without touching layout or any component's own
+   text-size classes. */
+@font-face {
+  font-family: "Otis Handwriting";
+  src: url("/fonts/OtisbitmeyersHandwriting-Regular.ttf") format("truetype");
+  font-weight: 400 900;
+  size-adjust: 150%;
+  font-display: swap;
+}
+
 :root {
   /* Base: black / paper white */
   --color-ink: #141311;
@@ -13,7 +28,7 @@
   --font-headline: var(--font-headline-local), sans-serif;
   /* Customer-facing default. Admin pages locally override this back to
      Lora — see the .admin-fonts class below. */
-  --font-body-serif: var(--font-handwriting-local), "Lora", serif;
+  --font-body-serif: "Otis Handwriting", "Lora", serif;
 }
 
 @theme inline {
@@ -28,6 +43,10 @@
 body {
   background: var(--color-paper);
   color: var(--color-ink);
+  /* Bolder by default to hold up against the handwriting font's thin
+     strokes — browsers synthesize bold reasonably well for a font with
+     only one real weight file. */
+  font-weight: 600;
 }
 
 /* Applied on /admin, /admin/orders, and /sell — keeps those working
@@ -35,4 +54,5 @@ body {
    font used everywhere customer-facing. */
 .admin-fonts {
   --font-body-serif: "Lora", serif;
+  font-weight: 400;
 }

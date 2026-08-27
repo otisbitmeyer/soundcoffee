@@ -204,7 +204,7 @@ export default function OrdersPage() {
   const [expandedOrderId, setExpandedOrderId] = useState(null);
   const [loadProgress, setLoadProgress] = useState(null);
   const [relaysSearched, setRelaysSearched] = useState([]);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState(null);
   const [showAllOrders, setShowAllOrders] = useState(false); // default: paid-only
 
   const isRightAccount = pubkey === SOUND_COFFEE_PUBKEY;
@@ -221,6 +221,9 @@ export default function OrdersPage() {
         // order showing up twice the way relay-scanned DMs sometimes did.
         const d1Res = await fetch("/api/orders");
         const d1Data = await d1Res.json();
+        if (!d1Res.ok) {
+          throw new Error(d1Data.error || `Server returned ${d1Res.status}`);
+        }
         const d1Orders = d1Data.orders || [];
         const d1OrderIds = new Set(d1Orders.map((o) => o.id));
 
@@ -311,8 +314,8 @@ export default function OrdersPage() {
         setOrders(foundOrders);
         setPaidOrderIds(foundPaidIds);
         setMessagesByOrder(foundMessages);
-      } catch {
-        if (!cancelled) setError(true);
+      } catch (e) {
+        if (!cancelled) setError(e.message || "Unknown error");
       }
     }
 
@@ -407,10 +410,10 @@ export default function OrdersPage() {
           )}
 
           {isRightAccount && error && (
-            <p className="mt-10 text-center font-serif italic text-ink/50">
-              Couldn&rsquo;t load orders right now &mdash; try again in a
-              bit.
-            </p>
+            <div className="mx-auto mt-10 max-w-md border-2 border-rust bg-rust/10 p-4 text-center">
+              <p className="font-serif text-rust">Couldn&rsquo;t load orders.</p>
+              <p className="mt-1 font-mono text-xs text-rust/70">{error}</p>
+            </div>
           )}
 
           {isRightAccount && !error && orders === null && (

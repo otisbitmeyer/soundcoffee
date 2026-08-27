@@ -531,6 +531,24 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
                 />
               </div>
 
+              {totalSats && (
+                <div className="border-y-2 border-ink py-3 text-center">
+                  <p className="font-display text-2xl text-ink">
+                    {totalSats.toLocaleString()} sats
+                    {totalUsdCents ? (
+                      <span className="ml-2 text-ink/50">
+                        (${(totalUsdCents / 100).toFixed(2)})
+                      </span>
+                    ) : null}
+                  </p>
+                  {shippingSats ? (
+                    <p className="mt-1 font-serif text-xs text-ink/50">
+                      includes {shippingSats.toLocaleString()} sats shipping
+                    </p>
+                  ) : null}
+                </div>
+              )}
+
               {shippingCoord && (
                 <div className="border-t-2 border-ink/10 pt-3 text-xs text-ink/60">
                   {shippingLoading ? (
@@ -581,24 +599,6 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
                   >
                     {`💳 PAY WITH CARD${totalUsdCents ? ` ($${(totalUsdCents / 100).toFixed(2)})` : ""}`}
                   </button>
-                </div>
-              )}
-
-              {totalSats && (
-                <div className="border-t-2 border-ink pt-3 text-center">
-                  <p className="font-display text-2xl text-ink">
-                    {totalSats.toLocaleString()} sats
-                    {totalUsdCents ? (
-                      <span className="ml-2 text-ink/50">
-                        (${(totalUsdCents / 100).toFixed(2)})
-                      </span>
-                    ) : null}
-                  </p>
-                  {shippingSats ? (
-                    <p className="mt-1 font-serif text-xs text-ink/50">
-                      includes {shippingSats.toLocaleString()} sats shipping
-                    </p>
-                  ) : null}
                 </div>
               )}
             </div>
