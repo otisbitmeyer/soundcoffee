@@ -82,9 +82,18 @@ export async function unwrapGiftWrap(wrappedEvent, authNip44Decrypt) {
   const seal = JSON.parse(sealJson);
   const rumorJson = await authNip44Decrypt(seal.pubkey, seal.content);
   if (typeof rumorJson !== "string" || !rumorJson) {
-    throw new Error(
+    const err = new Error(
       `Decrypting the seal returned ${typeof rumorJson} instead of text — the signer likely failed to decrypt this specific message and didn't throw a proper error.`
     );
+    // The wrap itself decrypted fine (we got this far) — so whatever's
+    // wrong is specific to the seal's claimed sender. Surfacing this is
+    // what actually tells us whether that pubkey is well-formed or not.
+    err.sealPubkey = seal.pubkey;
+    err.sealPubkeyType = typeof seal.pubkey;
+    err.sealPubkeyLength = typeof seal.pubkey === "string" ? seal.pubkey.length : null;
+    err.sealContentLength = typeof seal.content === "string" ? seal.content.length : null;
+    err.sealKind = seal.kind;
+    throw err;
   }
   const rumor = JSON.parse(rumorJson);
   return rumor;

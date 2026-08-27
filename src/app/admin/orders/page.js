@@ -447,6 +447,11 @@ export default function OrdersPage() {
                 tagCount: event.tags?.length ?? 0,
                 createdAt: new Date(event.created_at * 1000).toISOString(),
                 id: event.id,
+                sealPubkey: e.sealPubkey,
+                sealPubkeyType: e.sealPubkeyType,
+                sealPubkeyLength: e.sealPubkeyLength,
+                sealContentLength: e.sealContentLength,
+                sealKind: e.sealKind,
               };
             }
           }
@@ -668,6 +673,17 @@ export default function OrdersPage() {
                       <p>tags: {diagnostics.firstFailureDetail.tagCount}</p>
                       <p>created_at: {diagnostics.firstFailureDetail.createdAt}</p>
                       <p>event id: {diagnostics.firstFailureDetail.id}</p>
+                      <p className="mt-1 border-t border-ink/10 pt-1">
+                        seal pubkey: {String(diagnostics.firstFailureDetail.sealPubkey)}
+                      </p>
+                      <p>
+                        seal pubkey type: {diagnostics.firstFailureDetail.sealPubkeyType}{" "}
+                        (length: {diagnostics.firstFailureDetail.sealPubkeyLength ?? "n/a"})
+                      </p>
+                      <p>
+                        seal content length: {diagnostics.firstFailureDetail.sealContentLength ?? "n/a"}
+                      </p>
+                      <p>seal kind: {diagnostics.firstFailureDetail.sealKind ?? "n/a"}</p>
                     </>
                   )}
                 </div>
