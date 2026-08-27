@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { SimplePool } from "nostr-tools/pool";
+import { nip19 } from "nostr-tools";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import { useAuth } from "@/context/AuthContext";
@@ -72,6 +73,18 @@ function ListingRow({ listing, pubkey, signEvent, onDeleted }) {
             {listing.price ? `${listing.price.amount} ${listing.price.currency}` : "No price"}
             {listing.productType !== "simple" ? ` · ${listing.productType}` : ""}
           </p>
+          <a
+            href={`https://njump.me/${nip19.naddrEncode({
+              kind: 30402,
+              pubkey: listing.pubkey,
+              identifier: listing.dTag,
+            })}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-mono text-[11px] text-jade hover:underline"
+          >
+            view raw event ↗
+          </a>
         </div>
       </div>
       <button
