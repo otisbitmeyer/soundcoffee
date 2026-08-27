@@ -67,7 +67,15 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
   const submittingRef = useRef(false);
 
   const shippingCoord = listing.shippingOptionCoords?.[0] || null;
-  const { option: shippingOption, loading: shippingLoading } = useShippingOption(shippingCoord);
+  // Skip the relay round-trip entirely when the listing already has the
+  // cost inline (Conduit does this) — faster, and works even if the
+  // referenced shipping_option event isn't found anywhere we search.
+  const { option: fetchedShippingOption, loading: shippingLoading } = useShippingOption(
+    listing.shippingCost ? null : shippingCoord
+  );
+  const shippingOption = listing.shippingCost
+    ? { title: "Shipping", price: listing.shippingCost }
+    : fetchedShippingOption;
 
   const isFiatUsd = listing.price && (listing.price.currency || "").toLowerCase() === "usd";
   const directSats = listing.price ? satsFromSatsOrBtc(listing.price) : null;
@@ -572,7 +580,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
                 </div>
               )}
 
-              {shippingCoord && (
+              {(shippingCoord || listing.shippingCost) && (
                 <div className="border-t-2 border-ink/10 pt-3 text-xs text-ink/60">
                   {shippingLoading ? (
                     "Loading shipping option…"

@@ -4,6 +4,12 @@ import { useEffect, useState } from "react";
 import { SimplePool } from "nostr-tools/pool";
 import { DEFAULT_RELAYS } from "@/lib/relays";
 
+// Beyond our usual defaults — includes relays specific to other
+// Gamma-compatible marketplace apps, since a shipping option published
+// through one of them (e.g. Conduit) may live primarily on its own
+// relay rather than the wider public ones.
+const SHIPPING_SEARCH_RELAYS = [...DEFAULT_RELAYS, "wss://relay.conduit.market"];
+
 let pool;
 function getPool() {
   if (!pool) pool = new SimplePool();
@@ -42,7 +48,7 @@ export function useShippingOption(coordinate) {
     setLoading(true);
 
     getPool()
-      .get(DEFAULT_RELAYS, { kinds: [30406], authors: [pubkey], "#d": [dTag] })
+      .get(SHIPPING_SEARCH_RELAYS, { kinds: [30406], authors: [pubkey], "#d": [dTag] })
       .then((event) => {
         if (cancelled) return;
         setOption(event ? parseShippingOption(event) : null);

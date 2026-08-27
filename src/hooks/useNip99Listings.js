@@ -28,6 +28,15 @@ export function parseListing(event) {
     .filter((t) => t[0] === "shipping_option")
     .map((t) => t[1]);
 
+  // Not in the spec I found documented, but Conduit puts this directly
+  // on the listing — the shipping cost as plain data, no need to fetch
+  // a separate kind:30406 event at all when it's present. Prefer this
+  // when available; fall back to resolving shipping_option otherwise.
+  const shippingCostTag = event.tags.find((t) => t[0] === "shipping_cost");
+  const shippingCost = shippingCostTag
+    ? { amount: shippingCostTag[1], currency: shippingCostTag[2] }
+    : null;
+
   // Gamma spec's "spec" tag: ["spec", "<key>", "<value>"], may repeat —
   // this is where variation attributes like size/color live, since the
   // spec doesn't have dedicated fields for them.
@@ -60,6 +69,7 @@ export function parseListing(event) {
     productType: typeTag?.[1] || "simple",
     format: typeTag?.[2] || "digital",
     shippingOptionCoords,
+    shippingCost,
     specs,
     parentCoordinate,
     images,
