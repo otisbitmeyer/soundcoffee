@@ -823,7 +823,7 @@ async function pollZapReceiptsFromRelays(env) {
     const receipts = await pool.querySync(DEFAULT_RELAYS, {
       kinds: [9735],
       "#p": [SOUND_COFFEE_PUBKEY],
-      since: Math.floor(Date.now() / 1000) - 60 * 60 * 24,
+      since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 7,
     });
 
     for (const receipt of receipts) {
@@ -886,7 +886,7 @@ async function pollEcosystemBoostNotes(env) {
     const notes = await pool.querySync(DEFAULT_RELAYS, {
       kinds: [1],
       "#i": [SHOW_I_TAG],
-      since: Math.floor(Date.now() / 1000) - 60 * 60 * 24,
+      since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 7,
     });
 
     for (const note of notes) {
