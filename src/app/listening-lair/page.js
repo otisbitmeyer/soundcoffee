@@ -52,6 +52,13 @@ export default function ListeningLair() {
 
       <footer className="bg-paper">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-6 py-12 text-center">
+          <Image
+            src="/logo-mark.png"
+            alt="Sound Coffee"
+            width={578}
+            height={609}
+            className="h-auto w-16"
+          />
           <p className="font-display text-xs tracking-widest text-ink/50">
             SOUND COFFEE &mdash; BUILT ON NOSTR
           </p>
