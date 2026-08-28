@@ -312,6 +312,55 @@ async function sendEmail(env, { to, subject, text }) {
   return { sent: true };
 }
 
+/**
+ * Notifies the admin that an order was detected on the dashboard —
+ * specifically for orders from OTHER apps (Conduit, etc.), which have
+ * no other path to trigger an email the way our own checkout does at
+ * creation time. Dedup'd in KV so this fires exactly once per order,
+ * regardless of how many times the dashboard gets loaded.
+ */
+async function handleNotifyOrderDetected(request, env) {
+  const { orderId, source, itemSummary, amountSats, amountUsdCents, paymentMethod, buyerInfo } =
+    await request.json();
+  if (!orderId) return jsonResponse({ error: "Missing orderId." }, 422);
+
+  const dedupKey = `order-notified:${orderId}`;
+  if (await env.SOUND_COFFEE_KV.get(dedupKey)) {
+    return jsonResponse({ ok: true, skipped: "already notified" });
+  }
+
+  const amountLine =
+    paymentMethod === "card" && amountUsdCents
+      ? `$${(amountUsdCents / 100).toFixed(2)}`
+      : `${amountSats || 0} sats`;
+
+  try {
+    await sendEmail(env, {
+      // Hardcoded for now, per explicit request — worth making
+      // configurable (e.g. via ADMIN_EMAIL) once there's more than one
+      // person who needs these.
+      to: "otisbitmeyer@gmail.com",
+      subject: `New order detected — ${source || "Sound Coffee"} (${amountLine})`,
+      text: [
+        "A new order was detected on the orders dashboard.",
+        "",
+        `Order ID: ${orderId}`,
+        `Source: ${source || "Unknown"}`,
+        `Amount: ${amountLine}`,
+        `Payment method: ${paymentMethod || "unknown"}`,
+        itemSummary ? `Item: ${itemSummary}` : null,
+        buyerInfo ? `Buyer: ${buyerInfo}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    });
+    await env.SOUND_COFFEE_KV.put(dedupKey, "1", { expirationTtl: 60 * 60 * 24 * 180 });
+    return jsonResponse({ ok: true, sent: true });
+  } catch (e) {
+    return jsonResponse({ error: e.message }, 502);
+  }
+}
+
 async function handleNotifyOrder(request, env) {
   const body = await request.json();
   const { orderId, itemTitle, quantity, amountSats, buyerNpub, buyerEmail, address, notes } = body;
@@ -1098,6 +1147,9 @@ async function handleFetch(request, env) {
   }
   if (request.method === "POST" && url.pathname === "/api/notify-order") {
     return handleNotifyOrder(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/notify-order-detected") {
+    return handleNotifyOrderDetected(request, env);
   }
   if (request.method === "POST" && url.pathname === "/api/notify-shipped") {
     return handleNotifyShipped(request, env);

@@ -574,6 +574,26 @@ export default function OrdersPage() {
         setOrders(foundOrders);
         setPaidOrderIds(foundPaidIds);
         setMessagesByOrder(foundMessages);
+
+        // Orders placed through our own site already trigger an email
+        // immediately at creation — this covers everything else
+        // (Conduit, etc.), which has no other path to notify anyone.
+        // Server-side dedup means this is safe to call on every load.
+        for (const order of foundOrders) {
+          if (order.fromD1) continue;
+          fetch("/api/notify-order-detected", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderId: order.orderId,
+              source: order.sourceApp || "Unknown app",
+              itemSummary: order.items?.map((i) => `${i.coordinate.split(":").pop()} x${i.quantity}`).join(", "),
+              amountSats: order.amountSats,
+              paymentMethod: order.paymentMethod,
+              buyerInfo: order.email || order.buyerPubkey,
+            }),
+          }).catch(() => {});
+        }
       } catch (e) {
         if (!cancelled) setError(e.message || "Unknown error");
       }

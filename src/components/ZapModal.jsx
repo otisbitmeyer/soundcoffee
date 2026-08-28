@@ -7,6 +7,7 @@ import { SimplePool } from "nostr-tools/pool";
 import { useProfile } from "@/hooks/useProfile";
 import { useEnsureIdentity } from "@/hooks/useEnsureIdentity";
 import { resolveLud16, buildZapRequestTemplate, requestZapInvoice } from "@/lib/zap";
+import { publishBoostagram } from "@/lib/v4v";
 import { episodeTags, showTags } from "@/lib/episodeId";
 import { DEFAULT_RELAYS } from "@/lib/relays";
 import LoginModal from "./LoginModal";
@@ -158,6 +159,25 @@ export default function ZapModal({
         amountMsats,
         signedZapRequest: signed,
       });
+
+      // V4V 2.0 boostagram sidecar — carries the same message/amount/
+      // episode context as the zap request above, but keyed to this
+      // specific invoice's payment_hash instead of a Nostr event. This
+      // is what lets the boost still get picked up and counted even by
+      // an app that only understands V4V 2.0, not NIP-57 — best-effort,
+      // never blocks the actual Lightning payment either way.
+      publishBoostagram({
+        bolt11: pr,
+        recipientLud16: profile.lud16,
+        amountMsats,
+        message: comment,
+        siteUrl: window.location.href,
+        // A guest identity is a fresh one-time key — attributing to it
+        // is meaningless (and per the V4V 2.0 spec's own reasoning,
+        // ephemeral-keyed attribution gets filtered as spam-shaped
+        // anyway) — anonymous mode is the honest choice here.
+        identity: identity.isGuest ? null : { pubkey: identity.pubkey, signEvent: identity.signEvent },
+      }).catch(() => {});
 
       // Register with our own backend so settlement gets tracked toward
       // club membership even if this Lightning provider never publishes
