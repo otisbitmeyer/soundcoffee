@@ -6,10 +6,12 @@
    next/font's API doesn't expose the font-metric controls needed to fix
    that. size-adjust scales the font's rendered size at any font-size
    the page requests, without touching layout or any component's own
-   text-size classes. */
+   text-size classes. Using the real bold weight file now, not a
+   browser-synthesized bold — genuine letterforms read much better for
+   a handwriting font than mechanically thickened strokes. */
 @font-face {
   font-family: "Otis Handwriting";
-  src: url("/fonts/OtisbitmeyersHandwriting-Regular.ttf") format("truetype");
+  src: url("/fonts/OtisBitmeyersHandwritingBold-Regular.ttf") format("truetype");
   font-weight: 400 900;
   size-adjust: 150%;
   font-display: swap;
@@ -43,10 +45,6 @@
 body {
   background: var(--color-paper);
   color: var(--color-ink);
-  /* Bolder by default to hold up against the handwriting font's thin
-     strokes — browsers synthesize bold reasonably well for a font with
-     only one real weight file. */
-  font-weight: 600;
 }
 
 /* Applied on /admin, /admin/orders, and /sell — keeps those working
@@ -54,5 +52,4 @@ body {
    font used everywhere customer-facing. */
 .admin-fonts {
   --font-body-serif: "Lora", serif;
-  font-weight: 400;
 }
