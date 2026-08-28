@@ -73,6 +73,11 @@ function parseOrder(rumor) {
     email: getTag(rumor, "email")?.[1] || contentJson?.email || contentJson?.buyerEmail || null,
     phone: getTag(rumor, "phone")?.[1] || contentJson?.phone || null,
     notes: contentJson ? contentJson.notes || contentJson.message || "" : rumor.content || "",
+    // Which app actually sent this — the "client" tag (NIP-89 style) is
+    // what Conduit uses to identify itself; index 1 is the human-readable
+    // app name. Falls back to a generic label when a message doesn't
+    // include one at all (older/simpler clients may not).
+    sourceApp: getTag(rumor, "client")?.[1] || null,
     createdAt: rumor.created_at,
   };
 }
@@ -206,7 +211,7 @@ function OrderDetail({ order, messages, onSend, onMarkShipped }) {
 
   return (
     <tr>
-      <td colSpan={10} className="bg-ink/5 px-4 py-4">
+      <td colSpan={11} className="bg-ink/5 px-4 py-4">
         <div className="grid gap-6 sm:grid-cols-2">
           <div className="font-serif text-sm text-ink/80">
             <p className="font-display text-xs tracking-widest text-ink/50">
@@ -412,6 +417,7 @@ export default function OrdersPage() {
           trackingNumber: o.tracking_number,
           carrier: o.carrier,
           fromD1: true,
+          sourceApp: "Sound Coffee (this site)",
         }));
 
         const ownDmRelays = await getDmRelaysFor(SOUND_COFFEE_PUBKEY);
@@ -874,6 +880,7 @@ export default function OrdersPage() {
                       <th className="py-2 pr-4">BUYER</th>
                       <th className="py-2 pr-4">ITEM(S)</th>
                       <th className="py-2 pr-4">METHOD</th>
+                      <th className="py-2 pr-4">SOURCE</th>
                       <th className="py-2 pr-4">AMOUNT</th>
                       <th className="py-2 pr-4">STATUS</th>
                       <th className="py-2 pr-4">SHIPPING</th>
@@ -916,6 +923,9 @@ export default function OrdersPage() {
                                 : order.paymentMethod === "lightning"
                                 ? "⚡ Lightning"
                                 : "— External"}
+                            </td>
+                            <td className="py-3 pr-4 text-xs text-ink/60">
+                              {order.sourceApp || "Unknown"}
                             </td>
                             <td className="py-3 pr-4">
                               {order.paymentMethod === "card" && order.amountUsdCents
