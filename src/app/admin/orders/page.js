@@ -93,18 +93,54 @@ function parseReceipt(rumor) {
   return null;
 }
 
-/** General communication (kind 14, or kind 4 for NIP-04 apps) tied to an order via its subject tag. */
+/**
+ * General communication tied to an order — our own freeform chat
+ * (kind 14/4, tagged by "subject"), plus Conduit's structured
+ * status_update / shipping_update messages (kind 16, tagged by "order"),
+ * shown as readable summaries in the same thread.
+ */
 function parseMessage(rumor) {
-  if (rumor.kind !== 14 && rumor.kind !== 4) return null;
-  const orderId = getTag(rumor, "subject")?.[1];
-  if (!orderId) return null;
-  return {
-    orderId,
-    fromMe: rumor.pubkey === SOUND_COFFEE_PUBKEY,
-    senderPubkey: rumor.pubkey,
-    content: rumor.content,
-    createdAt: rumor.created_at,
-  };
+  if (rumor.kind === 14 || rumor.kind === 4) {
+    const orderId = getTag(rumor, "subject")?.[1];
+    if (!orderId) return null;
+    return {
+      orderId,
+      fromMe: rumor.pubkey === SOUND_COFFEE_PUBKEY,
+      senderPubkey: rumor.pubkey,
+      content: rumor.content,
+      createdAt: rumor.created_at,
+    };
+  }
+
+  if (rumor.kind === 16) {
+    const typeTag = getTag(rumor, "type");
+    const orderId = getTag(rumor, "order")?.[1];
+    if (!orderId) return null;
+
+    if (typeTag?.[1] === "status_update") {
+      const status = getTag(rumor, "status")?.[1] || "updated";
+      return {
+        orderId,
+        fromMe: rumor.pubkey === SOUND_COFFEE_PUBKEY,
+        senderPubkey: rumor.pubkey,
+        content: `Order status: ${status}`,
+        createdAt: rumor.created_at,
+      };
+    }
+    if (typeTag?.[1] === "shipping_update") {
+      const tracking = getTag(rumor, "tracking")?.[1];
+      const carrier = getTag(rumor, "carrier")?.[1];
+      return {
+        orderId,
+        fromMe: rumor.pubkey === SOUND_COFFEE_PUBKEY,
+        senderPubkey: rumor.pubkey,
+        content: `📦 Shipped${tracking ? ` — ${tracking}` : ""}${carrier ? ` (${carrier})` : ""}`,
+        createdAt: rumor.created_at,
+      };
+    }
+  }
+
+  return null;
 }
 
 function BuyerName({ pubkey }) {
@@ -578,6 +614,38 @@ export default function OrdersPage() {
     }));
   }
 
+  async function sendShippingUpdate(order, { trackingNumber, carrier }) {
+    const eventTemplate = {
+      kind: 16,
+      tags: [
+        ["p", order.buyerPubkey],
+        ["subject", `Order ${order.orderId} shipped`],
+        ["type", "shipping_update"],
+        ["order", order.orderId],
+        ["tracking", trackingNumber || ""],
+        ["carrier", carrier || ""],
+      ],
+      content: JSON.stringify({
+        orderId: order.orderId,
+        trackingNumber: trackingNumber || null,
+        carrier: carrier || null,
+      }),
+    };
+    const [toBuyer, toSelf] = await giftWrapForBoth({
+      eventTemplate,
+      senderPubkey: pubkey,
+      recipientPubkey: order.buyerPubkey,
+      authNip44Encrypt: nip44Encrypt,
+      authSignEvent: signEvent,
+    });
+
+    const buyerDmRelays = await getDmRelaysFor(order.buyerPubkey);
+    const publishTargets = [...new Set([...buyerDmRelays, ...DEFAULT_RELAYS])];
+
+    await Promise.any(getPublishPool().publish(publishTargets, toBuyer));
+    await Promise.any(getPublishPool().publish(DEFAULT_RELAYS, toSelf));
+  }
+
   async function handleMarkShipped(order, { trackingNumber, carrier }) {
     // Update D1 first — this is the record of truth, and should succeed
     // even if the notification step below has trouble.
@@ -587,17 +655,15 @@ export default function OrdersPage() {
       body: JSON.stringify({ id: order.orderId, trackingNumber, carrier }),
     });
 
-    const trackingLine = trackingNumber
-      ? `\n\nTracking: ${trackingNumber}${carrier ? ` (${carrier})` : ""}`
-      : "";
-    const messageText = `📦 Your order has shipped!${trackingLine}`;
-
-    // Nostr DM — only meaningful if they have a real (or at least
-    // reachable) identity, same rule as regular order messaging.
+    // Nostr — a properly-typed shipping_update (matching Conduit's real
+    // schema, so any Gamma-compatible app can parse it programmatically,
+    // not just show it as plain chat text), only meaningful if they have
+    // a real (or at least reachable) identity, same rule as regular
+    // order messaging.
     const canMessageViaNostr = !(order.isGuest && !order.email);
     if (canMessageViaNostr && order.buyerPubkey) {
       try {
-        await handleSendMessage(order, messageText);
+        await sendShippingUpdate(order, { trackingNumber, carrier });
       } catch {
         // best-effort — D1 update above already succeeded either way
       }

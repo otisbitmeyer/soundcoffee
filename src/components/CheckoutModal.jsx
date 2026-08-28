@@ -214,9 +214,10 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
       const orderTags = [
         ["p", sellerPubkey],
         ["subject", `Order: ${listing.title}`],
-        ["type", "1"],
+        ["type", "order"],
         ["order", newOrderId],
         ["amount", String(totalSats)],
+        ["currency", "SATS"],
         ["item", listing.coordinate, String(quantity)],
       ];
       if (combinedAddress) orderTags.push(["address", combinedAddress]);
@@ -380,15 +381,17 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
       const identity = await ensureIdentity();
       await sendGiftWrapped(
         {
-          kind: 17,
+          kind: 16,
           tags: [
             ["p", sellerPubkey],
             ["subject", "order-receipt"],
+            ["type", "payment_proof"],
             ["order", orderId],
-            ["payment", "lightning", invoice, ""],
             ["amount", String(totalSats)],
+            ["currency", "SATS"],
+            ["rail", "lightning"],
           ],
-          content: "Paid via Lightning.",
+          content: JSON.stringify({ orderId, rail: "lightning", invoice }),
         },
         identity
       );
