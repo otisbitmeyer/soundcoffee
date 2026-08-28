@@ -1015,6 +1015,74 @@ async function handleGetRelays(env) {
   return jsonResponse({ relays });
 }
 
+/**
+ * Diagnostic: scans all zap receipts to Sound Coffee (full history, not
+ * just the usual 7-day window) and reports what's actually in their i
+ * tags — not just whether they match our expected episode prefix. This
+ * is how we actually find out whether other apps use a different
+ * convention, rather than guessing at it the way we nearly did with
+ * Conduit's order format before checking real data.
+ */
+async function handleDiagnoseEpisodeZaps(env) {
+  const pool = new SimplePool();
+  const zapSearchRelays = await getZapSearchRelays(env);
+  const diag = {
+    totalReceipts: 0,
+    noDescriptionTag: 0,
+    malformedZapRequest: 0,
+    noITagAtAll: 0,
+    iTagMatchesOurPrefix: 0,
+    iTagPresentButDifferent: [],
+  };
+
+  try {
+    const receipts = await pool.querySync(zapSearchRelays, {
+      kinds: [9735],
+      "#p": [SOUND_COFFEE_PUBKEY],
+    });
+    diag.totalReceipts = receipts.length;
+
+    for (const receipt of receipts) {
+      const descriptionTag = receipt.tags.find((t) => t[0] === "description");
+      if (!descriptionTag) {
+        diag.noDescriptionTag++;
+        continue;
+      }
+      let zapRequest;
+      try {
+        zapRequest = JSON.parse(descriptionTag[1]);
+      } catch {
+        diag.malformedZapRequest++;
+        continue;
+      }
+
+      const iTags = zapRequest.tags.filter((t) => t[0] === "i");
+      if (iTags.length === 0) {
+        diag.noITagAtAll++;
+        continue;
+      }
+
+      const matching = iTags.find((t) => t[1]?.startsWith(EPISODE_I_PREFIX));
+      if (matching) {
+        diag.iTagMatchesOurPrefix++;
+      } else if (diag.iTagPresentButDifferent.length < 10) {
+        // Real values, not guesses — this is what tells us the actual
+        // convention other apps are using, if it differs from ours.
+        diag.iTagPresentButDifferent.push({
+          iTagValues: iTags.map((t) => t[1]),
+          kTagValues: zapRequest.tags.filter((t) => t[0] === "k").map((t) => t[1]),
+          eTag: zapRequest.tags.find((t) => t[0] === "e")?.[1] || null,
+          content: (zapRequest.content || "").slice(0, 60),
+        });
+      }
+    }
+  } finally {
+    pool.close(zapSearchRelays);
+  }
+
+  return jsonResponse(diag);
+}
+
 async function handleFetch(request, env) {
   const url = new URL(request.url);
 
@@ -1077,6 +1145,9 @@ async function handleFetch(request, env) {
   }
   if (request.method === "GET" && url.pathname === "/api/relays") {
     return handleGetRelays(env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/diagnose-episode-zaps") {
+    return handleDiagnoseEpisodeZaps(env);
   }
   if (request.method === "POST" && url.pathname === "/api/admin/recompute-stats") {
     return handleRecomputeStats(env);
