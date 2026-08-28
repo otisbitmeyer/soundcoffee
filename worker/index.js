@@ -111,6 +111,7 @@ const SOUND_COFFEE_PUBKEY =
 const SOUND_COFFEE_SHOW_GUID = "de47e794-c0a3-4bb4-8712-cce1e4566b7e";
 const SHOW_I_TAG = `podcast:guid:${SOUND_COFFEE_SHOW_GUID}`;
 const EPISODE_I_PREFIX = "podcast:item:guid:";
+const LEGACY_EPISODE_I_PREFIX = "podcast:episode:"; // our own pre-fix convention
 
 const MIN_BOOST_SATS = 100;
 
@@ -1267,11 +1268,19 @@ async function pollZapReceiptsFromRelays(env) {
           sourceId: `zap:${zapRequest.id}`,
         });
 
+        // Recognizes both the current spec-correct prefix and our own
+        // earlier (pre-fix) convention — a handful of zaps sent while
+        // we were still using the old format shouldn't just become
+        // permanently orphaned data.
         const iTag = zapRequest.tags.find(
-          (t) => t[0] === "i" && t[1]?.startsWith(EPISODE_I_PREFIX)
+          (t) =>
+            t[0] === "i" &&
+            (t[1]?.startsWith(EPISODE_I_PREFIX) || t[1]?.startsWith(LEGACY_EPISODE_I_PREFIX))
         );
         if (iTag) {
-          const episodeGuid = iTag[1].slice(EPISODE_I_PREFIX.length);
+          const episodeGuid = iTag[1].startsWith(EPISODE_I_PREFIX)
+            ? iTag[1].slice(EPISODE_I_PREFIX.length)
+            : iTag[1].slice(LEGACY_EPISODE_I_PREFIX.length);
           await recordEpisodeZap(env, {
             episodeGuid,
             amountSats,
@@ -1354,8 +1363,15 @@ async function pollEcosystemBoostNotes(env) {
 }
 
 function episodeGuidFromTags(tags) {
-  const iTag = tags.find((t) => t[0] === "i" && t[1]?.startsWith(EPISODE_I_PREFIX));
-  return iTag ? iTag[1].slice(EPISODE_I_PREFIX.length) : null;
+  const iTag = tags.find(
+    (t) =>
+      t[0] === "i" &&
+      (t[1]?.startsWith(EPISODE_I_PREFIX) || t[1]?.startsWith(LEGACY_EPISODE_I_PREFIX))
+  );
+  if (!iTag) return null;
+  return iTag[1].startsWith(EPISODE_I_PREFIX)
+    ? iTag[1].slice(EPISODE_I_PREFIX.length)
+    : iTag[1].slice(LEGACY_EPISODE_I_PREFIX.length);
 }
 
 async function handleScheduled(env) {
