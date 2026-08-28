@@ -1060,6 +1060,48 @@ async function handlePodcastFeed(request, env) {
   }
 }
 
+/**
+ * Direct diagnostic — visit this in a browser to immediately see
+ * exactly why email isn't working, instead of placing test orders and
+ * checking a separate dashboard. Reports precisely which secret (if
+ * any) is missing, or the exact error Resend itself returned.
+ */
+async function handleTestEmail(env) {
+  const diag = {
+    resendApiKeyPresent: !!env.RESEND_API_KEY,
+    resendApiKeyLength: env.RESEND_API_KEY?.length || 0,
+    adminEmailPresent: !!env.ADMIN_EMAIL,
+    adminEmailValue: env.ADMIN_EMAIL || null,
+  };
+
+  if (!env.RESEND_API_KEY) {
+    return jsonResponse({
+      ...diag,
+      result: "FAILED — RESEND_API_KEY is not visible to this Worker at runtime. Either it's not saved, saved under a slightly different name, or saved somewhere this Worker doesn't read from.",
+    });
+  }
+  if (!env.ADMIN_EMAIL) {
+    return jsonResponse({
+      ...diag,
+      result: "FAILED — ADMIN_EMAIL is not visible to this Worker at runtime, same issue as above.",
+    });
+  }
+
+  try {
+    await sendEmail(env, {
+      to: env.ADMIN_EMAIL,
+      subject: "Sound Coffee — test email",
+      text: `This is a direct test, sent at ${new Date().toISOString()}. If you're reading this, email is genuinely working.`,
+    });
+    return jsonResponse({ ...diag, result: "SUCCESS — check the inbox now." });
+  } catch (e) {
+    return jsonResponse({
+      ...diag,
+      result: `FAILED — both secrets are visible, but Resend itself rejected the request: ${e.message}`,
+    });
+  }
+}
+
 async function handleGetRelays(env) {
   const relays = await getZapSearchRelays(env);
   return jsonResponse({ relays });
@@ -1198,6 +1240,9 @@ async function handleFetch(request, env) {
   }
   if (request.method === "GET" && url.pathname === "/api/relays") {
     return handleGetRelays(env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/test-email") {
+    return handleTestEmail(env);
   }
   if (request.method === "GET" && url.pathname === "/api/diagnose-episode-zaps") {
     return handleDiagnoseEpisodeZaps(env);
