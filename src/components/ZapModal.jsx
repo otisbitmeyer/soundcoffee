@@ -10,6 +10,7 @@ import { resolveLud16, buildZapRequestTemplate, requestZapInvoice } from "@/lib/
 import { episodeTags, showTags } from "@/lib/episodeId";
 import { DEFAULT_RELAYS } from "@/lib/relays";
 import LoginModal from "./LoginModal";
+import WalletConnectPay from "./WalletConnectPay";
 
 let publishPool;
 function getPublishPool() {
@@ -302,6 +303,12 @@ export default function ZapModal({
 
           {status === "ready" && invoice && (
             <div className="space-y-4 text-center">
+              <WalletConnectPay invoice={invoice} onPaid={handleManualConfirm} />
+
+              <p className="font-serif text-xs italic text-ink/40">
+                — or scan/copy the invoice below —
+              </p>
+
               <img
                 src={qrDataUrl}
                 alt="Lightning invoice QR code"

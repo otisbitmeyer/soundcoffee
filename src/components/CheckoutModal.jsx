@@ -13,6 +13,7 @@ import { useBtcUsdPrice, usdToSats } from "@/hooks/useBtcUsdPrice";
 import { useShippingOption } from "@/hooks/useShippingOption";
 import { formatDualPrice } from "@/lib/formatPrice";
 import LoginModal from "./LoginModal";
+import WalletConnectPay from "./WalletConnectPay";
 
 let pool;
 function getPool() {
@@ -627,6 +628,13 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
                 Order placed &mdash; the seller has been sent your order
                 details privately. Pay the invoice below to complete it.
               </p>
+
+              <WalletConnectPay invoice={invoice} onPaid={handleConfirmPaid} />
+
+              <p className="font-serif text-xs italic text-ink/40">
+                — or scan/copy the invoice below —
+              </p>
+
               <img
                 src={qrDataUrl}
                 alt="Lightning invoice QR code"
