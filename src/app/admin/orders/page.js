@@ -15,6 +15,11 @@ import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 // A wider set than the site's usual DEFAULT_RELAYS — this search needs to
 // cast a much broader net, since an order could arrive from any app,
 // published to relays we'd have no other reason to know about.
+// Bucket key for messages that don't reference any specific order — a
+// real customer messaging in via a general Nostr client, for instance.
+// These used to just vanish silently instead of surfacing anywhere.
+const UNASSIGNED_KEY = "__unassigned__";
+
 const EXTRA_SEARCH_RELAYS = [
   "wss://relay.snort.social",
   "wss://nostr.wine",
@@ -106,8 +111,11 @@ function parseReceipt(rumor) {
  */
 function parseMessage(rumor) {
   if (rumor.kind === 14 || rumor.kind === 4) {
-    const orderId = getTag(rumor, "subject")?.[1];
-    if (!orderId) return null;
+    // A subject tag ties this to a specific order thread when present.
+    // When it's absent — a real customer messaging in via a general
+    // Nostr client, for instance — this used to just vanish silently.
+    // orderId null means "show it, just not filed under any order."
+    const orderId = getTag(rumor, "subject")?.[1] || null;
     return {
       orderId,
       fromMe: rumor.pubkey === SOUND_COFFEE_PUBKEY,
@@ -517,8 +525,9 @@ export default function OrdersPage() {
             if (order && !d1OrderIds.has(order.orderId)) foundOrders.push(order);
             if (receipt?.orderId) foundPaidIds.add(receipt.orderId);
             if (message) {
-              if (!foundMessages[message.orderId]) foundMessages[message.orderId] = [];
-              foundMessages[message.orderId].push(message);
+              const bucketKey = message.orderId || UNASSIGNED_KEY;
+              if (!foundMessages[bucketKey]) foundMessages[bucketKey] = [];
+              foundMessages[bucketKey].push(message);
             }
           } catch (e) {
             diag.decryptFailures++;
@@ -842,6 +851,35 @@ export default function OrdersPage() {
               )}
             </div>
           )}
+
+          {isRightAccount &&
+            messagesByOrder[UNASSIGNED_KEY]?.length > 0 && (
+              <div className="mx-auto mt-6 max-w-2xl border-2 border-rust bg-rust/5 p-5">
+                <h2 className="font-display text-sm tracking-widest text-rust">
+                  ⚠ {messagesByOrder[UNASSIGNED_KEY].length} MESSAGE
+                  {messagesByOrder[UNASSIGNED_KEY].length === 1 ? "" : "S"} NOT TIED TO ANY ORDER
+                </h2>
+                <p className="mt-1 font-serif text-xs text-ink/60">
+                  These didn&rsquo;t reference an order id, so they&rsquo;re
+                  shown here directly instead of filed under anything —
+                  worth a look, could be real customer questions.
+                </p>
+                <div className="mt-3 space-y-2">
+                  {messagesByOrder[UNASSIGNED_KEY]
+                    .slice()
+                    .sort((a, b) => b.createdAt - a.createdAt)
+                    .map((m, i) => (
+                      <div key={i} className="border border-ink/10 bg-paper p-3 font-serif text-sm">
+                        <p className="font-mono text-xs text-ink/40">
+                          {m.fromMe ? "You" : m.senderPubkey.slice(0, 12) + "…"} &middot;{" "}
+                          {new Date(m.createdAt * 1000).toLocaleString()}
+                        </p>
+                        <p className="mt-1">{m.content}</p>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
 
           {isRightAccount && error && (
             <div className="mx-auto mt-10 max-w-md border-2 border-rust bg-rust/10 p-4 text-center">
