@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import Header from "@/components/Header";
 import PodcastEpisodes from "@/components/PodcastEpisodes";
 import ShopGrid from "@/components/ShopGrid";
+import PwaInstallButton from "@/components/PwaInstallButton";
 
 export default function Home() {
   return (
@@ -83,6 +84,7 @@ export default function Home() {
           <p className="font-display text-xs tracking-widest text-ink/50">
             SOUND COFFEE &mdash; BUILT ON NOSTR
           </p>
+          <PwaInstallButton />
         </div>
       </footer>
     </>

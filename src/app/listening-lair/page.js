@@ -7,6 +7,7 @@ import ZapButton from "@/components/ZapButton";
 import { usePodcastFeed } from "@/hooks/usePodcastFeed";
 import { MAIN_FEED } from "@/lib/podcastFeeds";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
+import PwaInstallButton from "@/components/PwaInstallButton";
 
 export default function ListeningLair() {
   // Just the one show for now — episodes go straight on this page
@@ -62,6 +63,7 @@ export default function ListeningLair() {
           <p className="font-display text-xs tracking-widest text-ink/50">
             SOUND COFFEE &mdash; BUILT ON NOSTR
           </p>
+          <PwaInstallButton />
         </div>
       </footer>
     </>
