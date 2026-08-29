@@ -6,6 +6,8 @@ import { nsecEncode, npubEncode, decode } from "nostr-tools/nip19";
 import { getConversationKey, encrypt as nip44EncryptRaw, decrypt as nip44DecryptRaw } from "nostr-tools/nip44";
 import { decrypt as nip04DecryptRaw } from "nostr-tools/nip04";
 import { BunkerSigner, parseBunkerInput } from "nostr-tools/nip46";
+import { bytesToHex } from "nostr-tools/utils";
+import { DEFAULT_RELAYS } from "@/lib/relays";
 
 const AuthContext = createContext(null);
 
@@ -130,6 +132,52 @@ export function AuthProvider({ children }) {
       20000,
       "Connected, but didn't get a response for your public key. Try again."
     );
+
+    bunkerSignerRef.current = signer;
+    setPubkey(pk);
+    setSecretKey(null);
+    setMethod("bunker");
+    return pk;
+  }, []);
+
+  // nostrconnect:// — the reverse of the bunker:// flow above. Instead of
+  // the signer app generating a string for the user to paste here, WE
+  // generate a connection request (as a QR code / deep link) and the
+  // signer app connects back to us once approved. Generally the more
+  // reliable of the two flows with apps like Amber.
+  const startNostrConnect = useCallback((appName) => {
+    const clientSecretKey = generateSecretKey();
+    const clientPubkey = getPublicKey(clientSecretKey);
+    // Random token the signer must echo back — this is what proves the
+    // eventual response is really answering THIS request, not some
+    // unrelated/spoofed one.
+    const secret = bytesToHex(generateSecretKey()).slice(0, 32);
+    const relay = DEFAULT_RELAYS[0];
+
+    const params = new URLSearchParams();
+    params.set("relay", relay);
+    params.set("secret", secret);
+    if (appName) params.set("name", appName);
+
+    const uri = `nostrconnect://${clientPubkey}?${params.toString()}`;
+    return { uri, clientSecretKey };
+  }, []);
+
+  const awaitNostrConnectApproval = useCallback(async (clientSecretKey, uri, timeoutMs = 120000) => {
+    const signer = await BunkerSigner.fromURI(clientSecretKey, uri, {}, timeoutMs);
+
+    // Same gap as the bunker:// flow — getPublicKey() has no built-in
+    // timeout in the underlying library, so an unresponsive signer here
+    // would otherwise hang forever with no error at all.
+    const pk = await Promise.race([
+      signer.getPublicKey(),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error("Connected, but didn't get a response for your public key. Try again.")),
+          20000
+        )
+      ),
+    ]);
 
     bunkerSignerRef.current = signer;
     setPubkey(pk);
@@ -280,6 +328,8 @@ export function AuthProvider({ children }) {
         restoring,
         loginWithExtension,
         loginWithBunker,
+        startNostrConnect,
+        awaitNostrConnectApproval,
         createNewKeys,
         createGuestKeys,
         importKey,

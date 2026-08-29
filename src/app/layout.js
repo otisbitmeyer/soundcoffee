@@ -2,6 +2,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import StripeReturnBanner from "@/components/StripeReturnBanner";
+import PwaInstall from "@/components/PwaInstall";
 
 // The real, licensed Newcastle headline font — replaces the old
 // "Lilita One" placeholder.
@@ -39,6 +40,7 @@ export default function RootLayout({ children }) {
       <body className="min-h-full flex flex-col font-serif">
         <AuthProvider>
           <StripeReturnBanner />
+          <PwaInstall />
           {children}
         </AuthProvider>
       </body>
