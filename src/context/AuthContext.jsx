@@ -152,10 +152,14 @@ export function AuthProvider({ children }) {
     // eventual response is really answering THIS request, not some
     // unrelated/spoofed one.
     const secret = bytesToHex(generateSecretKey()).slice(0, 32);
-    const relay = DEFAULT_RELAYS[0];
+    // Multiple relays, not one — a single relay having any hiccup
+    // (idle timeout, rate limit, restart) would otherwise kill the
+    // whole connection attempt with no fallback. The spec explicitly
+    // supports repeating the relay param for this exact reason.
+    const relays = DEFAULT_RELAYS.slice(0, 3);
 
     const params = new URLSearchParams();
-    params.set("relay", relay);
+    for (const relay of relays) params.append("relay", relay);
     params.set("secret", secret);
     if (appName) params.set("name", appName);
 
