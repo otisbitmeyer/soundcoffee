@@ -5,6 +5,58 @@ these up whenever it's actually time.
 
 ---
 
+## Amber login (NIP-46 remote signer)
+
+Letting people log in via Amber (Android) instead of a browser
+extension or pasted key.
+
+**Status: attempted twice, both failed in real device testing.** Worth
+reading this before trying a third time.
+
+**Attempt 1 — `bunker://` (paste flow):** Amber generates a connection
+string, user pastes it into our site. Matched Amber's own
+documentation. Diagnosed and fixed a real bug along the way (the
+underlying library's `connect()` has no built-in timeout at all — could
+hang forever with zero feedback on a failed connection). Even with that
+fixed, connection never actually completed — no further diagnosable
+error, just silent failure.
+
+**Attempt 2 — `nostrconnect://` (QR/deep-link flow):** the reverse
+direction — we generate the connection request, user scans/opens it in
+Amber. Verified the exact wire protocol (kind 24133, NIP-44 encryption,
+secret-matching handshake) against the real spec before building,
+confirmed the constructed URI round-trips correctly through the
+library's own parsing. Got further than attempt 1 — Amber genuinely
+recognized and displayed the connection request — but hit two real
+issues:
+- First error: `"Subscription was closed before connection was
+  established"` — fixed by using multiple relays instead of one (the
+  spec supports repeating the `relay` param; we were only using one,
+  no redundancy).
+- After that fix: Amber kept prompting to "replace" an existing
+  connection on every retry. Diagnosed as orphaned subscriptions from
+  previous attempts never being cleanly cancelled — fixed using a
+  proper `AbortController`, aborting the prior attempt before starting
+  a new one.
+- **Still didn't work after both fixes.** Removed rather than continue
+  guessing blind without real device access to actually debug further.
+
+**What would actually move this forward:** live debugging with someone
+who has Amber installed and is willing to check Amber's own logs/state
+during a real attempt, not just report the end symptom. Both fixes
+made were well-reasoned and verified against real protocol specs, not
+guesses — but NIP-46 as a whole is acknowledged by experienced Nostr
+developers as still not reliable across the ecosystem generally, so
+some of this may be inherent to the protocol's current maturity, not
+purely something fixable in our own code.
+
+**Code status:** the AuthContext functions (`loginWithBunker`,
+`startNostrConnect`, `awaitNostrConnectApproval`) are still there,
+dormant, not wired into any UI. Easy to resume from here rather than
+starting over, if picked back up.
+
+---
+
 ## Embedded Nostr feed
 
 Show Sound Coffee's own Nostr posts directly on the site (Listening
