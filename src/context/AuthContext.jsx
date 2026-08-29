@@ -167,8 +167,8 @@ export function AuthProvider({ children }) {
     return { uri, clientSecretKey };
   }, []);
 
-  const awaitNostrConnectApproval = useCallback(async (clientSecretKey, uri, timeoutMs = 120000) => {
-    const signer = await BunkerSigner.fromURI(clientSecretKey, uri, {}, timeoutMs);
+  const awaitNostrConnectApproval = useCallback(async (clientSecretKey, uri, signal) => {
+    const signer = await BunkerSigner.fromURI(clientSecretKey, uri, {}, signal);
 
     // Same gap as the bunker:// flow — getPublicKey() has no built-in
     // timeout in the underlying library, so an unresponsive signer here

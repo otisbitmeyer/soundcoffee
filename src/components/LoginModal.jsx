@@ -22,6 +22,7 @@ export default function LoginModal({ onClose }) {
   const [qrDataUrl, setQrDataUrl] = useState(null);
   const [amberStatus, setAmberStatus] = useState("idle"); // idle | waiting | error
   const connectAttemptRef = useRef(0); // lets a stale attempt's result be ignored if the user hit "try again"
+  const abortControllerRef = useRef(null); // cancels the PREVIOUS attempt's still-open subscription on retry
 
   async function handleExtension() {
     setError("");
@@ -54,6 +55,17 @@ export default function LoginModal({ onClose }) {
     setAmberStatus("waiting");
     const attempt = ++connectAttemptRef.current;
 
+    // Cancel the PREVIOUS attempt's subscription before starting a new
+    // one — otherwise retries just pile up as orphaned, still-listening
+    // connections, which is very likely why Amber kept prompting to
+    // "replace" an existing connection instead of cleanly starting over.
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+
     const { uri, clientSecretKey } = startNostrConnect("Sound Coffee");
     setNostrConnectUri(uri);
     try {
@@ -64,14 +76,17 @@ export default function LoginModal({ onClose }) {
     }
 
     try {
-      await awaitNostrConnectApproval(clientSecretKey, uri, 120000);
+      await awaitNostrConnectApproval(clientSecretKey, uri, controller.signal);
+      clearTimeout(timeoutId);
       if (connectAttemptRef.current !== attempt) return; // superseded by a retry
       onClose();
     } catch (e) {
+      clearTimeout(timeoutId);
       if (connectAttemptRef.current !== attempt) return;
       setError(
-        e.message ||
-          "No response within 2 minutes. Make sure you opened the link or scanned the code in Amber and approved the connection."
+        controller.signal.aborted
+          ? "No response within 2 minutes. Make sure you opened the link or scanned the code in Amber and approved the connection."
+          : e.message || "Connection failed. Try again."
       );
       setAmberStatus("error");
     }
@@ -83,6 +98,12 @@ export default function LoginModal({ onClose }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+    };
+  }, []);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/80 px-4">
