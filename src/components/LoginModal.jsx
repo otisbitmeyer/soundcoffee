@@ -22,6 +22,7 @@ export default function LoginModal({ onClose }) {
   const [qrDataUrl, setQrDataUrl] = useState(null);
   const [amberStatus, setAmberStatus] = useState("idle"); // idle | waiting | error
   const [authUrl, setAuthUrl] = useState(null);
+  const [capturedWarnings, setCapturedWarnings] = useState([]);
   const connectAttemptRef = useRef(0); // lets a stale attempt's result be ignored if the user hit "try again"
   const abortControllerRef = useRef(null); // cancels the PREVIOUS attempt's still-open subscription on retry
 
@@ -69,12 +70,26 @@ export default function LoginModal({ onClose }) {
     const { uri, clientSecretKey } = startNostrConnect("Sound Coffee");
     setNostrConnectUri(uri);
     setAuthUrl(null);
+    setCapturedWarnings([]);
     try {
       const qr = await QRCode.toDataURL(uri, { margin: 1, width: 320 });
       if (connectAttemptRef.current === attempt) setQrDataUrl(qr);
     } catch {
       // QR generation failing doesn't block the deep link from working
     }
+
+    // The underlying library uses console.warn() for a couple of
+    // silent-failure paths (malformed/undecryptable events it can't
+    // process, an auth_url with no handler) that never surface through
+    // our own error handling at all. Capturing this directly in the UI
+    // instead of asking anyone to go dig through browser dev tools.
+    const originalWarn = console.warn;
+    console.warn = (...args) => {
+      if (connectAttemptRef.current === attempt) {
+        setCapturedWarnings((prev) => [...prev, args.map(String).join(" ")]);
+      }
+      originalWarn(...args);
+    };
 
     try {
       await awaitNostrConnectApproval(clientSecretKey, uri, controller.signal, (url) => {
@@ -92,6 +107,8 @@ export default function LoginModal({ onClose }) {
           : e.message || "Connection failed. Try again."
       );
       setAmberStatus("error");
+    } finally {
+      console.warn = originalWarn;
     }
   }
 
@@ -205,6 +222,19 @@ export default function LoginModal({ onClose }) {
                   Waiting for approval&hellip; this can take up to 2
                   minutes.
                 </p>
+              )}
+
+              {capturedWarnings.length > 0 && (
+                <div className="border-2 border-rust/40 bg-rust/5 p-3 text-left font-mono text-[11px] text-rust">
+                  <p className="font-display tracking-widest text-rust/70">
+                    SIGNER WARNINGS
+                  </p>
+                  {capturedWarnings.map((w, i) => (
+                    <p key={i} className="mt-1 break-words">
+                      {w}
+                    </p>
+                  ))}
+                </div>
               )}
 
               {authUrl && (
