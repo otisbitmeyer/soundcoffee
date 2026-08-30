@@ -49,11 +49,7 @@ export default function ProductCard({ listing, sellerPubkey, allListings }) {
   const isVariable = listing.productType === "variable";
   const variations = isVariable ? getVariationsOf(allListings, listing.coordinate) : [];
 
-  const priceLabel = isVariable
-    ? variations.length > 0
-      ? "SEE OPTIONS"
-      : null
-    : formatPrice(listing.price, btcUsdPrice);
+  const priceLabel = isVariable ? null : formatPrice(listing.price, btcUsdPrice);
 
   // Prefer the longer markdown content for the expanded view, falling
   // back to the summary if that's all there is.
