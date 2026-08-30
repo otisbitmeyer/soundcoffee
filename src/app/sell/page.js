@@ -203,6 +203,12 @@ export default function SellPage() {
   // Editing is supported for simple listings and variable parents, not
   // yet for individual variations.
   const [editingDTag, setEditingDTag] = useState(null);
+  // Whether the listing being edited was actually a "variable" parent
+  // — tracked separately from the hasVariations checkbox (which stays
+  // off during edit, hiding the variation-rows UI on purpose) so a
+  // basic edit doesn't silently downgrade a variable product to
+  // simple and break its variant picker for buyers.
+  const [editingWasVariable, setEditingWasVariable] = useState(false);
 
   const [status, setStatus] = useState("form"); // form | working | done | error
   const [error, setError] = useState("");
@@ -265,6 +271,13 @@ export default function SellPage() {
 
     setStatus("working");
     setError("");
+
+    // When editing, preserve the listing's actual original type
+    // (variable vs simple) — the hasVariations checkbox is deliberately
+    // forced off during edit (hiding the variation-rows UI, which isn't
+    // what this edit is for), so it can't be trusted here the way it
+    // can when creating a brand new listing.
+    const publishAsVariable = editingDTag ? editingWasVariable : hasVariations;
 
     try {
       const dTag = editingDTag || `${slugify(title)}-${Date.now()}`;
@@ -381,7 +394,7 @@ export default function SellPage() {
           ["d", dTag],
           ["title", title.trim()],
           ["price", priceAmount, priceCurrency],
-          ["type", "simple", format],
+          ["type", publishAsVariable ? "variable" : "simple", format],
           ...baseTags,
         ];
         for (const url of defaultImageUrls) tags.push(["image", url]);
@@ -414,6 +427,7 @@ export default function SellPage() {
     setHasVariations(false);
     setVariations([newVariationRow(), newVariationRow()]);
     setEditingDTag(null);
+    setEditingWasVariable(false);
     setStatus("form");
     setPublishedEventId(null);
   }
@@ -432,6 +446,7 @@ export default function SellPage() {
       setShipCurrency(listing.shippingCost.currency || "USD");
     }
     setEditingDTag(listing.dTag);
+    setEditingWasVariable(listing.productType === "variable");
     setStatus("form");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
