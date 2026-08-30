@@ -203,12 +203,6 @@ export default function SellPage() {
   // Editing is supported for simple listings and variable parents, not
   // yet for individual variations.
   const [editingDTag, setEditingDTag] = useState(null);
-  // Whether the listing being edited was actually a "variable" parent
-  // — tracked separately from the hasVariations checkbox (which stays
-  // off during edit, hiding the variation-rows UI on purpose) so a
-  // basic edit doesn't silently downgrade a variable product to
-  // simple and break its variant picker for buyers.
-  const [editingWasVariable, setEditingWasVariable] = useState(false);
 
   const [status, setStatus] = useState("form"); // form | working | done | error
   const [error, setError] = useState("");
@@ -258,7 +252,11 @@ export default function SellPage() {
       ? variations.filter((v) => v.price && (v.size.trim() || v.color.trim()))
       : [];
 
-    if (hasVariations && validVariations.length === 0) {
+    // Editing a variable parent's own fields doesn't touch its
+    // variations at all — they stay exactly as they are, separate
+    // events. Only require filled-in variation rows when actually
+    // creating them, i.e. not while editing.
+    if (!editingDTag && hasVariations && validVariations.length === 0) {
       setError("Add at least one variation with a size/color and a price.");
       setStatus("error");
       return;
@@ -273,11 +271,12 @@ export default function SellPage() {
     setError("");
 
     // When editing, preserve the listing's actual original type
-    // (variable vs simple) — the hasVariations checkbox is deliberately
-    // forced off during edit (hiding the variation-rows UI, which isn't
-    // what this edit is for), so it can't be trusted here the way it
-    // can when creating a brand new listing.
-    const publishAsVariable = editingDTag ? editingWasVariable : hasVariations;
+    // (variable vs simple) — the hasVariations checkbox reflects it
+    // directly here, pre-filled correctly by handleEdit but always
+    // editable, so if a listing's type is ever wrong (e.g. corrupted by
+    // an old version of this same bug) there's a real way to fix it
+    // rather than being stuck with silently "preserving" a bad state.
+    const publishAsVariable = hasVariations;
 
     try {
       const dTag = editingDTag || `${slugify(title)}-${Date.now()}`;
@@ -427,7 +426,6 @@ export default function SellPage() {
     setHasVariations(false);
     setVariations([newVariationRow(), newVariationRow()]);
     setEditingDTag(null);
-    setEditingWasVariable(false);
     setStatus("form");
     setPublishedEventId(null);
   }
@@ -440,13 +438,12 @@ export default function SellPage() {
     setPriceCurrency(listing.price?.currency || "sats");
     setImageUrls((listing.images || []).join("\n"));
     setFormat(listing.format || "physical");
-    setHasVariations(false); // editing works on this listing's own fields only
+    setHasVariations(listing.productType === "variable"); // pre-filled, but editable — see it if it's wrong, fix it right here
     if (listing.shippingCost) {
       setShipPrice(listing.shippingCost.amount || "");
       setShipCurrency(listing.shippingCost.currency || "USD");
     }
     setEditingDTag(listing.dTag);
-    setEditingWasVariable(listing.productType === "variable");
     setStatus("form");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -610,6 +607,15 @@ export default function SellPage() {
 
               {hasVariations && (
                 <div className="border-2 border-ink/20 p-4">
+                  {editingDTag && (
+                    <p className="mb-3 border-2 border-jade/30 bg-jade/5 p-2 font-serif text-xs text-ink/70">
+                      Editing an existing variable listing — you don&rsquo;t
+                      need to fill in rows below. This checkbox alone is
+                      what keeps this listing correctly marked as having
+                      size/color options; your actual variations aren&rsquo;t
+                      touched by this edit at all.
+                    </p>
+                  )}
                   <div className="flex items-center justify-between">
                     <label className="block font-display text-xs tracking-widest text-ink/60">
                       VARIATIONS
