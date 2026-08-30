@@ -185,7 +185,15 @@ export function AuthProvider({ children }) {
   }, []);
 
   const awaitNostrConnectApproval = useCallback(async (clientSecretKey, uri, signal) => {
-    const signer = await BunkerSigner.fromURI(clientSecretKey, uri, {}, signal);
+    // skipSwitchRelays: without this, the library automatically tries
+    // to switch to a different relay set immediately after connecting
+    // — if that switch lands somewhere the signer isn't actually
+    // listening, every request AFTER the initial connect (like this
+    // one, get_public_key) goes nowhere, while the connect itself
+    // (on the original relays) still succeeded. Likely the actual
+    // explanation for get_public_key timing out despite a successful
+    // connection.
+    const signer = await BunkerSigner.fromURI(clientSecretKey, uri, { skipSwitchRelays: true }, signal);
 
     // Same gap as the bunker:// flow — getPublicKey() has no built-in
     // timeout in the underlying library, so an unresponsive signer here
