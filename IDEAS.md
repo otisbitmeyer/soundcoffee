@@ -5,6 +5,41 @@ these up whenever it's actually time.
 
 ---
 
+## Autonomous order detection (Conduit/external orders while offline)
+
+Right now, detecting orders from other apps (Conduit, etc.) — and the
+email alert and inventory decrement that depend on it — only runs when
+`/admin/orders` is loaded in a browser. No dashboard visit, no
+detection, no matter how long an order's been sitting there. Zap
+detection has an independent background job checking every 5 minutes
+regardless of whether anyone's looking; external order detection
+doesn't have an equivalent.
+
+**Why it's not built:** the real fix requires the Worker to
+autonomously decrypt incoming NIP-17/NIP-04 order messages without a
+browser session open, which means it needs real decrypting capability
+for Sound Coffee's identity on its own — explicitly declined (raw key
+as a Worker secret is a real trust boundary, reasonably so).
+
+**The chosen path forward, once it's time:** NOT a server-held key.
+Add an auto-refresh timer to the orders dashboard (e.g. every 5
+minutes) and leave one browser tab open somewhere, logged in via
+extension — the exact same decryption that already happens today when
+someone's actively looking, just automatic instead of manual. Pair
+with the browser's own Notification API so that tab can surface a real
+desktop alert instead of silently updating in the background. Your
+key never leaves your own extension either way.
+
+**Alternative considered and set aside:** a NIP-46 remote-signer
+connection for the Worker itself (same idea as Amber login, but for
+this specific job). Not recommended given our own documented
+experience — two separate, careful NIP-46/Amber attempts both failed
+in real testing this session (see the Amber login section below).
+Worth naming as an option, not worth depending on based on what we've
+actually seen work.
+
+---
+
 ## Amber login (NIP-46 remote signer)
 
 Letting people log in via Amber (Android) instead of a browser
