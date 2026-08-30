@@ -1,13 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import QRCode from "qrcode";
+import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 
 export default function LoginModal({ onClose }) {
-  const { loginWithExtension, createNewKeys, importKey, startNostrConnect, awaitNostrConnectApproval } =
-    useAuth();
-  const [tab, setTab] = useState("extension"); // "extension" | "amber" | "create" | "import"
+  const { loginWithExtension, createNewKeys, importKey } = useAuth();
+  const [tab, setTab] = useState("extension"); // "extension" | "create" | "import"
   const [error, setError] = useState("");
 
   // "create" flow state
@@ -16,15 +14,6 @@ export default function LoginModal({ onClose }) {
 
   // "import" flow state
   const [importValue, setImportValue] = useState("");
-
-  // "amber" (nostrconnect) flow state
-  const [nostrConnectUri, setNostrConnectUri] = useState(null);
-  const [qrDataUrl, setQrDataUrl] = useState(null);
-  const [amberStatus, setAmberStatus] = useState("idle"); // idle | waiting | error
-  const [authUrl, setAuthUrl] = useState(null);
-  const [capturedWarnings, setCapturedWarnings] = useState([]);
-  const connectAttemptRef = useRef(0); // lets a stale attempt's result be ignored if the user hit "try again"
-  const abortControllerRef = useRef(null); // cancels the PREVIOUS attempt's still-open subscription on retry
 
   async function handleExtension() {
     setError("");
@@ -52,79 +41,6 @@ export default function LoginModal({ onClose }) {
     }
   }
 
-  async function beginAmberConnect() {
-    setError("");
-    setAmberStatus("waiting");
-    const attempt = ++connectAttemptRef.current;
-
-    // Cancel the PREVIOUS attempt's subscription before starting a new
-    // one — otherwise retries just pile up as orphaned, still-listening
-    // connections.
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 120000);
-
-    const { uri, clientSecretKey } = startNostrConnect("Sound Coffee");
-    setNostrConnectUri(uri);
-    setAuthUrl(null);
-    setCapturedWarnings([]);
-    try {
-      const qr = await QRCode.toDataURL(uri, { margin: 1, width: 320 });
-      if (connectAttemptRef.current === attempt) setQrDataUrl(qr);
-    } catch {
-      // QR generation failing doesn't block the deep link from working
-    }
-
-    // The underlying library uses console.warn() for a couple of
-    // silent-failure paths (malformed/undecryptable events it can't
-    // process, an auth_url with no handler) that never surface through
-    // our own error handling at all. Capturing this directly in the UI
-    // instead of asking anyone to go dig through browser dev tools.
-    const originalWarn = console.warn;
-    console.warn = (...args) => {
-      if (connectAttemptRef.current === attempt) {
-        setCapturedWarnings((prev) => [...prev, args.map(String).join(" ")]);
-      }
-      originalWarn(...args);
-    };
-
-    try {
-      await awaitNostrConnectApproval(clientSecretKey, uri, controller.signal, (url) => {
-        if (connectAttemptRef.current === attempt) setAuthUrl(url);
-      });
-      clearTimeout(timeoutId);
-      if (connectAttemptRef.current !== attempt) return; // superseded by a retry
-      onClose();
-    } catch (e) {
-      clearTimeout(timeoutId);
-      if (connectAttemptRef.current !== attempt) return;
-      setError(
-        controller.signal.aborted
-          ? "No response within 2 minutes. Make sure you opened the link or scanned the code in Amber and approved the connection."
-          : e.message || "Connection failed. Try again."
-      );
-      setAmberStatus("error");
-    } finally {
-      console.warn = originalWarn;
-    }
-  }
-
-  useEffect(() => {
-    if (tab === "amber" && amberStatus === "idle") {
-      beginAmberConnect();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
-
-  useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) abortControllerRef.current.abort();
-    };
-  }, []);
-
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/80 px-4">
       <div className="w-full max-w-md border-2 border-ink bg-paper">
@@ -145,7 +61,6 @@ export default function LoginModal({ onClose }) {
         <div className="flex border-b-2 border-ink font-display text-[10px] tracking-widest sm:text-xs">
           {[
             ["extension", "EXTENSION"],
-            ["amber", "AMBER / PHONE"],
             ["create", "CREATE NEW"],
             ["import", "IMPORT KEY"],
           ].map(([key, label]) => (
@@ -187,75 +102,6 @@ export default function LoginModal({ onClose }) {
               >
                 CONNECT EXTENSION
               </button>
-            </div>
-          )}
-
-          {/* --- AMBER / PHONE (nostrconnect) --- */}
-          {tab === "amber" && (
-            <div className="space-y-4 text-center font-serif text-sm text-ink/80">
-              <p>
-                On a phone with <strong>Amber</strong> (Android) installed,
-                tap the link below or scan the code with Amber to connect
-                &mdash; your private key stays on your phone the whole
-                time, this site never sees it.
-              </p>
-
-              {qrDataUrl && (
-                <img
-                  src={qrDataUrl}
-                  alt="Nostr Connect QR code"
-                  className="mx-auto border-2 border-ink"
-                />
-              )}
-
-              {nostrConnectUri && (
-                <a
-                  href={nostrConnectUri}
-                  className="block w-full break-all border-2 border-ink bg-ink px-4 py-3 font-display text-sm tracking-widest text-paper hover:bg-rust hover:border-rust"
-                >
-                  OPEN IN AMBER
-                </a>
-              )}
-
-              {amberStatus === "waiting" && (
-                <p className="text-xs italic text-ink/50">
-                  Waiting for approval&hellip; this can take up to 2
-                  minutes.
-                </p>
-              )}
-
-              {capturedWarnings.length > 0 && (
-                <div className="border-2 border-rust/40 bg-rust/5 p-3 text-left font-mono text-[11px] text-rust">
-                  <p className="font-display tracking-widest text-rust/70">
-                    SIGNER WARNINGS
-                  </p>
-                  {capturedWarnings.map((w, i) => (
-                    <p key={i} className="mt-1 break-words">
-                      {w}
-                    </p>
-                  ))}
-                </div>
-              )}
-
-              {authUrl && (
-                <a
-                  href={authUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-full border-2 border-jade bg-jade px-4 py-3 font-display text-sm tracking-widest text-paper hover:bg-ink hover:border-ink"
-                >
-                  ONE MORE STEP — TAP TO AUTHORIZE
-                </a>
-              )}
-
-              {amberStatus === "error" && (
-                <button
-                  onClick={beginAmberConnect}
-                  className="w-full border-2 border-ink px-4 py-2 font-display text-xs tracking-widest text-ink hover:border-jade hover:text-jade"
-                >
-                  TRY AGAIN (NEW CODE)
-                </button>
-              )}
             </div>
           )}
 

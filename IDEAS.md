@@ -42,22 +42,79 @@ actually seen work.
 
 ## Amber login (NIP-46 remote signer)
 
-**Status: re-enabled with a real fix, worth testing again.**
+**Status: attempted three times total now. Removed again.** This time,
+six distinct, individually-verified bugs were found and fixed in a
+single session — genuinely substantial progress — and it *still*
+didn't work in real testing. Full detail below, because this is enough
+real diagnostic work that a fourth attempt shouldn't have to
+rediscover any of it.
 
-Attempted twice before and both failed — but on being pushed to
-actually check whether the problem was on our end rather than
-assume protocol immaturity, found a concrete bug: Amber's own team
-documents the nostrconnect:// URI as expecting a single JSON-encoded
-`metadata` parameter (`{"name":"...","url":"...","description":"..."}`),
-not separate `name`/`url` query params, which is what the more
-generic NIP-46 examples show and what we'd actually built. Fixed to
-match Amber's documented format specifically, keeping the plain
-`name` param too as a harmless redundant fallback for other signers.
+**What got fixed this round, all verified against real sources, not
+guesses:**
+1. **Wrong metadata format** — we were sending separate `name`/`url`
+   query params; Amber's own team documents a single JSON-encoded
+   `metadata` param instead. This fix visibly changed behavior (got
+   past the initial connection step for the first time), confirming
+   it was real.
+2. **Missing `perms`** — we never declared which permissions
+   (`get_public_key`, `sign_event`, `nip44_encrypt`, `nip44_decrypt`)
+   we'd need upfront, which the spec supports specifically so a
+   signer can grant them all in one approval instead of prompting
+   separately for each action.
+3. **Unwanted automatic relay-switching** — `BunkerSigner.fromURI`
+   silently calls `switchRelays()` right after a successful connect
+   unless told not to (`skipSwitchRelays: true`). Found by reading the
+   library's own source line by line.
+4. **Missing `onauth` handler** — NIP-46 lets a signer respond "open
+   this URL to finish authorizing" instead of answering directly.
+   Without a handler for that, the library logs a console warning and
+   the request just hangs forever — a precise mechanical match for
+   "connected, but no response," since a response genuinely had
+   arrived, we just had nothing to receive it.
+5. **General-purpose relays instead of a NIP-46-dedicated one** — an
+   actual implementation HOWTO (nostrconnect.org, written by people
+   who've built working NIP-46 clients) explicitly warns that
+   general-purpose relays may not handle NIP-46's ephemeral event kind
+   the same way a relay built for it does. Added
+   `relay.nsecbunker.com`, a real relay used in the wild for exactly
+   this.
+6. **No visibility into silent library warnings** — added live capture
+   of `console.warn` output directly into the UI, since the library
+   uses it for a couple of silent-failure paths that never surface as
+   thrown errors at all.
 
-Previous attempts (bunker:// paste flow, then nostrconnect:// without
-the correct metadata format) are still documented below for context —
-both real, careful attempts with real fixes along the way, just not
-the actual root cause.
+**Still failed after all six.** Error stayed "connected, but didn't
+get a response for your public key" throughout.
+
+**Important context found along the way, worth remembering:** a
+direct, first-hand assessment from a knowledgeable Nostr developer,
+evaluating NIP-46 apps specifically: *"Why is nak the only NIP-46 app
+that actually works? Runner-up is Amber which mostly works but still a
+bit finicky."* That's someone in the ecosystem itself saying Amber —
+not a fringe or abandoned app — isn't fully reliable even in their own
+experience. "Other apps successfully use this" and "this protocol is
+still genuinely inconsistent in practice" are both true at once.
+
+**What would actually move this forward next time:** live,
+side-by-side debugging with someone who has Amber installed — ideally
+checking Amber's own internal logs/state during a real attempt, not
+just the end symptom on our side. The captured-warnings UI (point 6
+above) is still in the codebase's history if the tab gets rebuilt —
+worth restoring that specifically, since it's exactly the kind of
+visibility this needs.
+
+**Immediate practical alternative for logging in from a phone right
+now:** the "IMPORT KEY" tab works everywhere, including mobile
+browsers — paste an nsec directly to log in for that session. Less
+secure than a proper remote-signer flow (that's the whole reason NIP-46
+exists), and it doesn't persist across visits by design, but it's
+completely reliable today if there's a real, current need to check the
+dashboard from a phone.
+
+**Code status:** `loginWithBunker`, `startNostrConnect`, and
+`awaitNostrConnectApproval` are still in AuthContext, dormant, all six
+fixes intact in the code — not wired into any UI. A future attempt
+starts from a meaningfully better place than either previous one did.
 
 Letting people log in via Amber (Android) instead of a browser
 extension or pasted key.
