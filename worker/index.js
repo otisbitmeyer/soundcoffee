@@ -965,6 +965,38 @@ async function commitReservationsForOrder(env, orderId) {
   }
 }
 
+/**
+ * Decrements inventory for an order detected from another app (Conduit,
+ * etc.) — these never go through our reserve/commit flow since the
+ * buyer never touched our checkout, so this decrements directly once
+ * an order is confirmed paid. Deduped in KV so revisiting the dashboard
+ * a hundred times only ever decrements once per real order.
+ */
+async function handleDecrementInventoryExternal(request, env) {
+  const { orderId, items } = await request.json();
+  if (!orderId || !Array.isArray(items)) {
+    return jsonResponse({ error: "Missing orderId or items." }, 422);
+  }
+
+  const dedupKey = `inventory-decremented:${orderId}`;
+  if (await env.SOUND_COFFEE_KV.get(dedupKey)) {
+    return jsonResponse({ ok: true, skipped: "already decremented" });
+  }
+
+  for (const item of items) {
+    // MAX(0, ...) — same safety as our own reservation commit path,
+    // never let an unexpected quantity push stock negative.
+    await env.DB.prepare(
+      `UPDATE inventory SET stock = MAX(0, stock - ?), updated_at = ? WHERE product_coordinate = ? AND stock IS NOT NULL`
+    )
+      .bind(item.quantity || 1, Date.now(), item.coordinate)
+      .run();
+  }
+
+  await env.SOUND_COFFEE_KV.put(dedupKey, "1", { expirationTtl: 60 * 60 * 24 * 180 });
+  return jsonResponse({ ok: true, decremented: true });
+}
+
 async function handleGetInventory(request, env) {
   const url = new URL(request.url);
   const coordinate = url.searchParams.get("coordinate");
@@ -1228,6 +1260,9 @@ async function handleFetch(request, env) {
   }
   if (request.method === "POST" && url.pathname === "/api/inventory/reserve") {
     return handleReserveInventory(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/inventory/decrement-external") {
+    return handleDecrementInventoryExternal(request, env);
   }
   if (request.method === "GET" && url.pathname === "/api/inventory") {
     return handleGetInventory(request, env);

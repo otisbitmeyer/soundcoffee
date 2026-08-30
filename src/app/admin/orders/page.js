@@ -602,6 +602,18 @@ export default function OrdersPage() {
               buyerInfo: order.email || order.buyerPubkey,
             }),
           }).catch(() => {});
+
+          // Only decrement for orders actually confirmed paid — an
+          // abandoned/unpaid order from another app shouldn't reduce
+          // stock, same distinction our own reserve/commit flow makes.
+          // Dedup'd server-side, safe to call on every dashboard load.
+          if (foundPaidIds.has(order.orderId) && order.items?.length) {
+            fetch("/api/inventory/decrement-external", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orderId: order.orderId, items: order.items }),
+            }).catch(() => {});
+          }
         }
       } catch (e) {
         if (!cancelled) setError(e.message || "Unknown error");
