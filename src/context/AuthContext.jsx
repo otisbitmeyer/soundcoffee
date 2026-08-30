@@ -161,7 +161,16 @@ export function AuthProvider({ children }) {
     const params = new URLSearchParams();
     for (const relay of relays) params.append("relay", relay);
     params.set("secret", secret);
-    if (appName) params.set("name", appName);
+    // Amber's own team documents this as a single JSON-encoded
+    // "metadata" param — not separate name/url query params, which is
+    // what the more generic NIP-46 spec examples show and what we had
+    // built before. Keeping a plain "name" param too, redundantly, in
+    // case some other signer expects that convention instead — costs
+    // nothing, and doesn't conflict with anything.
+    if (appName) {
+      params.set("metadata", JSON.stringify({ name: appName }));
+      params.set("name", appName);
+    }
 
     const uri = `nostrconnect://${clientPubkey}?${params.toString()}`;
     return { uri, clientSecretKey };

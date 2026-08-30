@@ -42,6 +42,23 @@ actually seen work.
 
 ## Amber login (NIP-46 remote signer)
 
+**Status: re-enabled with a real fix, worth testing again.**
+
+Attempted twice before and both failed — but on being pushed to
+actually check whether the problem was on our end rather than
+assume protocol immaturity, found a concrete bug: Amber's own team
+documents the nostrconnect:// URI as expecting a single JSON-encoded
+`metadata` parameter (`{"name":"...","url":"...","description":"..."}`),
+not separate `name`/`url` query params, which is what the more
+generic NIP-46 examples show and what we'd actually built. Fixed to
+match Amber's documented format specifically, keeping the plain
+`name` param too as a harmless redundant fallback for other signers.
+
+Previous attempts (bunker:// paste flow, then nostrconnect:// without
+the correct metadata format) are still documented below for context —
+both real, careful attempts with real fixes along the way, just not
+the actual root cause.
+
 Letting people log in via Amber (Android) instead of a browser
 extension or pasted key.
 
