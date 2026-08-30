@@ -776,92 +776,107 @@ export default function OrdersPage() {
             </p>
           )}
 
-          {isRightAccount && relaysSearched.length > 0 && (
-            <details className="mx-auto mt-6 max-w-2xl border border-ink/20 p-3 text-center font-serif text-xs text-ink/50">
-              <summary className="cursor-pointer font-display tracking-widest">
-                RELAYS SEARCHED ({relaysSearched.length})
+          {isRightAccount && (relaysSearched.length > 0 || diagnostics) && (
+            <details className="group mx-auto mt-6 max-w-2xl border-2 border-ink/15 text-xs text-ink/60">
+              <summary className="cursor-pointer select-none px-4 py-3 font-display tracking-widest text-ink/50 transition hover:text-ink [&::-webkit-details-marker]:hidden">
+                <span className="inline-flex items-center gap-2">
+                  <span className="inline-block text-[10px] transition-transform duration-200 group-open:rotate-90">
+                    ▸
+                  </span>
+                  SEARCH DIAGNOSTICS
+                </span>
               </summary>
-              <p className="mt-2 font-mono">{relaysSearched.join(", ")}</p>
-              <p className="mt-2 italic">
-                Publish your own DM relay list under Club Admin &rarr;
-                Merchant Settings to make sure well-behaved apps send
-                orders somewhere we&rsquo;re actually looking.
-              </p>
+
+              <div className="space-y-4 border-t-2 border-ink/10 px-4 py-4 text-left font-serif">
+                {relaysSearched.length > 0 && (
+                  <div>
+                    <p className="font-display text-[11px] tracking-widest text-ink/40">
+                      RELAYS SEARCHED ({relaysSearched.length})
+                    </p>
+                    <p className="mt-1 font-mono text-[11px]">{relaysSearched.join(", ")}</p>
+                    <p className="mt-1 italic text-ink/40">
+                      Publish your own DM relay list under Club Admin &rarr;
+                      Merchant Settings to make sure well-behaved apps send
+                      orders somewhere we&rsquo;re actually looking.
+                    </p>
+                  </div>
+                )}
+
+                {diagnostics && (
+                  <div className="border-t border-ink/10 pt-4">
+                    <p className="font-display text-[11px] tracking-widest text-jade">
+                      LAST SEARCH RESULTS
+                    </p>
+                    <p className="mt-1">
+                      Found {diagnostics.totalEventsFound} encrypted message
+                      {diagnostics.totalEventsFound === 1 ? "" : "s"} addressed
+                      to you ({diagnostics.kind1059Count} NIP-17,{" "}
+                      {diagnostics.kind4Count} NIP-04).
+                    </p>
+                    <p className="mt-1">
+                      {diagnostics.decryptFailures > 0 ? (
+                        <span className="text-rust">
+                          {diagnostics.decryptFailures} failed to decrypt.
+                        </span>
+                      ) : (
+                        <span className="text-jade">
+                          All of them decrypted successfully.
+                        </span>
+                      )}{" "}
+                      {diagnostics.decryptedNotOrderRelated} decrypted fine but
+                      weren&rsquo;t order/receipt/message content.
+                    </p>
+
+                    {diagnostics.unrecognizedSamples.length > 0 && (
+                      <div className="mt-2 border-t border-ink/10 pt-2 font-mono text-[11px] text-ink/60">
+                        <p className="font-display tracking-widest text-ink/40">
+                          UNRECOGNIZED SAMPLES
+                        </p>
+                        {diagnostics.unrecognizedSamples.map((s, i) => (
+                          <div key={i} className="mt-1 border-t border-ink/5 pt-1">
+                            <p>kind: {s.kind}</p>
+                            <p>tags: {JSON.stringify(s.tags)}</p>
+                            <p>content: {s.contentPreview}…</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {diagnostics.firstError && (
+                      <div className="mt-2 border-t border-ink/10 pt-2 font-mono text-[11px] text-rust">
+                        <p>First error: {diagnostics.firstError}</p>
+                        {diagnostics.firstFailureDetail && (
+                          <>
+                            <p className="mt-1">
+                              sender: {diagnostics.firstFailureDetail.pubkey}
+                            </p>
+                            <p>
+                              content length: {diagnostics.firstFailureDetail.contentLength}
+                            </p>
+                            <p>
+                              content starts: {diagnostics.firstFailureDetail.contentPreview}…
+                            </p>
+                            <p>tags: {diagnostics.firstFailureDetail.tagCount}</p>
+                            <p>created_at: {diagnostics.firstFailureDetail.createdAt}</p>
+                            <p>event id: {diagnostics.firstFailureDetail.id}</p>
+                            <p className="mt-1 border-t border-ink/10 pt-1">
+                              seal pubkey: {String(diagnostics.firstFailureDetail.sealPubkey)}
+                            </p>
+                            <p>
+                              seal pubkey type: {diagnostics.firstFailureDetail.sealPubkeyType}{" "}
+                              (length: {diagnostics.firstFailureDetail.sealPubkeyLength ?? "n/a"})
+                            </p>
+                            <p>
+                              seal content length: {diagnostics.firstFailureDetail.sealContentLength ?? "n/a"}
+                            </p>
+                            <p>seal kind: {diagnostics.firstFailureDetail.sealKind ?? "n/a"}</p>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </details>
-          )}
-
-          {isRightAccount && diagnostics && (
-            <div className="mx-auto mt-4 max-w-2xl border-2 border-jade/40 bg-jade/5 p-4 text-center font-serif text-xs text-ink/70">
-              <p className="font-display tracking-widest text-jade">
-                DIAGNOSTIC — LAST SEARCH
-              </p>
-              <p className="mt-2">
-                Found {diagnostics.totalEventsFound} encrypted message
-                {diagnostics.totalEventsFound === 1 ? "" : "s"} addressed
-                to you ({diagnostics.kind1059Count} NIP-17,{" "}
-                {diagnostics.kind4Count} NIP-04).
-              </p>
-              <p className="mt-1">
-                {diagnostics.decryptFailures > 0 ? (
-                  <span className="text-rust">
-                    {diagnostics.decryptFailures} failed to decrypt.
-                  </span>
-                ) : (
-                  <span className="text-jade">
-                    All of them decrypted successfully.
-                  </span>
-                )}{" "}
-                {diagnostics.decryptedNotOrderRelated} decrypted fine but
-                weren&rsquo;t order/receipt/message content.
-              </p>
-
-              {diagnostics.unrecognizedSamples.length > 0 && (
-                <div className="mt-2 border-t border-ink/10 pt-2 text-left font-mono text-[11px] text-ink/60">
-                  <p className="font-display tracking-widest text-ink/40">
-                    UNRECOGNIZED SAMPLES
-                  </p>
-                  {diagnostics.unrecognizedSamples.map((s, i) => (
-                    <div key={i} className="mt-1 border-t border-ink/5 pt-1">
-                      <p>kind: {s.kind}</p>
-                      <p>tags: {JSON.stringify(s.tags)}</p>
-                      <p>content: {s.contentPreview}…</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {diagnostics.firstError && (
-                <div className="mt-2 border-t border-ink/10 pt-2 text-left font-mono text-[11px] text-rust">
-                  <p>First error: {diagnostics.firstError}</p>
-                  {diagnostics.firstFailureDetail && (
-                    <>
-                      <p className="mt-1">
-                        sender: {diagnostics.firstFailureDetail.pubkey}
-                      </p>
-                      <p>
-                        content length: {diagnostics.firstFailureDetail.contentLength}
-                      </p>
-                      <p>
-                        content starts: {diagnostics.firstFailureDetail.contentPreview}…
-                      </p>
-                      <p>tags: {diagnostics.firstFailureDetail.tagCount}</p>
-                      <p>created_at: {diagnostics.firstFailureDetail.createdAt}</p>
-                      <p>event id: {diagnostics.firstFailureDetail.id}</p>
-                      <p className="mt-1 border-t border-ink/10 pt-1">
-                        seal pubkey: {String(diagnostics.firstFailureDetail.sealPubkey)}
-                      </p>
-                      <p>
-                        seal pubkey type: {diagnostics.firstFailureDetail.sealPubkeyType}{" "}
-                        (length: {diagnostics.firstFailureDetail.sealPubkeyLength ?? "n/a"})
-                      </p>
-                      <p>
-                        seal content length: {diagnostics.firstFailureDetail.sealContentLength ?? "n/a"}
-                      </p>
-                      <p>seal kind: {diagnostics.firstFailureDetail.sealKind ?? "n/a"}</p>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
           )}
 
           {isRightAccount &&
