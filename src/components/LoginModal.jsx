@@ -21,6 +21,7 @@ export default function LoginModal({ onClose }) {
   const [nostrConnectUri, setNostrConnectUri] = useState(null);
   const [qrDataUrl, setQrDataUrl] = useState(null);
   const [amberStatus, setAmberStatus] = useState("idle"); // idle | waiting | error
+  const [authUrl, setAuthUrl] = useState(null);
   const connectAttemptRef = useRef(0); // lets a stale attempt's result be ignored if the user hit "try again"
   const abortControllerRef = useRef(null); // cancels the PREVIOUS attempt's still-open subscription on retry
 
@@ -67,6 +68,7 @@ export default function LoginModal({ onClose }) {
 
     const { uri, clientSecretKey } = startNostrConnect("Sound Coffee");
     setNostrConnectUri(uri);
+    setAuthUrl(null);
     try {
       const qr = await QRCode.toDataURL(uri, { margin: 1, width: 320 });
       if (connectAttemptRef.current === attempt) setQrDataUrl(qr);
@@ -75,7 +77,9 @@ export default function LoginModal({ onClose }) {
     }
 
     try {
-      await awaitNostrConnectApproval(clientSecretKey, uri, controller.signal);
+      await awaitNostrConnectApproval(clientSecretKey, uri, controller.signal, (url) => {
+        if (connectAttemptRef.current === attempt) setAuthUrl(url);
+      });
       clearTimeout(timeoutId);
       if (connectAttemptRef.current !== attempt) return; // superseded by a retry
       onClose();
@@ -201,6 +205,17 @@ export default function LoginModal({ onClose }) {
                   Waiting for approval&hellip; this can take up to 2
                   minutes.
                 </p>
+              )}
+
+              {authUrl && (
+                <a
+                  href={authUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full border-2 border-jade bg-jade px-4 py-3 font-display text-sm tracking-widest text-paper hover:bg-ink hover:border-ink"
+                >
+                  ONE MORE STEP — TAP TO AUTHORIZE
+                </a>
               )}
 
               {amberStatus === "error" && (

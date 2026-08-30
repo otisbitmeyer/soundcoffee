@@ -184,16 +184,28 @@ export function AuthProvider({ children }) {
     return { uri, clientSecretKey };
   }, []);
 
-  const awaitNostrConnectApproval = useCallback(async (clientSecretKey, uri, signal) => {
-    // skipSwitchRelays: without this, the library automatically tries
-    // to switch to a different relay set immediately after connecting
-    // — if that switch lands somewhere the signer isn't actually
-    // listening, every request AFTER the initial connect (like this
-    // one, get_public_key) goes nowhere, while the connect itself
-    // (on the original relays) still succeeded. Likely the actual
-    // explanation for get_public_key timing out despite a successful
-    // connection.
-    const signer = await BunkerSigner.fromURI(clientSecretKey, uri, { skipSwitchRelays: true }, signal);
+  const awaitNostrConnectApproval = useCallback(async (clientSecretKey, uri, signal, onAuthUrl) => {
+    // onauth: NIP-46 lets the signer respond to a request with "please
+    // open this URL to finish authorizing" instead of answering
+    // directly. Without a handler for that, the library just logs a
+    // console warning and never resolves OR rejects the pending
+    // request — which looks exactly like "connected, but no response,"
+    // because a response DID arrive, we just had nothing to receive it.
+    // Surfaced via callback rather than window.open() directly — this
+    // fires from an async network event, not a direct click, so a
+    // popup here would likely just get silently blocked with no
+    // visible failure.
+    const signer = await BunkerSigner.fromURI(
+      clientSecretKey,
+      uri,
+      {
+        skipSwitchRelays: true,
+        onauth: (url) => {
+          if (url && onAuthUrl) onAuthUrl(url);
+        },
+      },
+      signal
+    );
 
     // Same gap as the bunker:// flow — getPublicKey() has no built-in
     // timeout in the underlying library, so an unresponsive signer here
