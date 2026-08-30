@@ -168,32 +168,24 @@ starting over, if picked back up.
 
 ## Embedded Nostr feed
 
-Show Sound Coffee's own Nostr posts directly on the site (Listening
-Lair or its own page), rather than linking out to Primal/another
-client.
+Show Sound Coffee's own Nostr posts (and posts about Sound Coffee —
+mentions, replies) directly on the site, rather than linking out to
+Primal/another client.
 
-**Why embed instead of link out:** sending people to a third-party
-client is a rough first touch for anyone who's never used Nostr — a
-foreign UI, unrelated timeline, its own login. An embedded feed keeps
-people in Sound Coffee's own branded experience the whole time, the
-same way checkout and episode zapping already work without anyone
-needing to understand what Nostr is.
+**Full technical design written up in `FEED-DESIGN.md`** — data model,
+background caching architecture, what's genuinely reused vs. new,
+moderation approach, and real open questions. Not built, not wired in
+anywhere. Read that file before starting rather than re-deriving the
+architecture from scratch.
 
-**Why it's not actually starting from zero:** most of the pieces
-already exist elsewhere in this codebase — a note/reply display
-pattern (episode comments), a zap flow that already supports zapping
-an arbitrary event by id (`ZapModal`'s `eventId` prop isn't
-episode-specific), guest identity creation for frictionless
-interaction, image handling for embedded media. This is largely
-existing pieces pointed at kind 1 notes instead of listings/episodes.
-
-**Recommended shape:** embedded feed as the primary way to see it
-(read + reply + zap, guest-friendly), plus a small secondary "view on
-Nostr" link for people who already have a preferred client and want
-their own notification setup instead.
+**The short version of why embed instead of link out:** sending people
+to a third-party client is a rough first touch for anyone who's never
+used Nostr. An embedded feed keeps people in Sound Coffee's own
+branded experience the whole time, same as checkout and episode
+zapping already do.
 
 **Scope note:** bigger than a one-file change — closer in size to the
-shipping/fulfillment work than a quick addition. Worth its own pass.
+shipping/fulfillment work than a quick addition.
 
 ---
 
