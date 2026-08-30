@@ -161,6 +161,14 @@ export function AuthProvider({ children }) {
     const params = new URLSearchParams();
     for (const relay of relays) params.append("relay", relay);
     params.set("secret", secret);
+    // Declared upfront, all in the one initial approval — without this,
+    // the signer likely has to show a SEPARATE prompt for every
+    // individual action (get_public_key, then signing, then
+    // decrypting), which is easy to miss if you're not expecting a
+    // second prompt right after approving the connection itself. This
+    // is very likely why get_public_key specifically timed out even
+    // though the connection succeeded.
+    params.set("perms", "get_public_key,sign_event,nip44_encrypt,nip44_decrypt");
     // Amber's own team documents this as a single JSON-encoded
     // "metadata" param — not separate name/url query params, which is
     // what the more generic NIP-46 spec examples show and what we had
@@ -181,13 +189,16 @@ export function AuthProvider({ children }) {
 
     // Same gap as the bunker:// flow — getPublicKey() has no built-in
     // timeout in the underlying library, so an unresponsive signer here
-    // would otherwise hang forever with no error at all.
+    // would otherwise hang forever with no error at all. Longer than
+    // the bunker:// version's 20s as a safety margin — if declaring
+    // perms upfront doesn't fully eliminate a follow-up prompt on some
+    // signer, this gives more room to notice and respond to it.
     const pk = await Promise.race([
       signer.getPublicKey(),
       new Promise((_, reject) =>
         setTimeout(
           () => reject(new Error("Connected, but didn't get a response for your public key. Try again.")),
-          20000
+          45000
         )
       ),
     ]);
