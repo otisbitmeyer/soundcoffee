@@ -156,7 +156,13 @@ export function AuthProvider({ children }) {
     // (idle timeout, rate limit, restart) would otherwise kill the
     // whole connection attempt with no fallback. The spec explicitly
     // supports repeating the relay param for this exact reason.
-    const relays = DEFAULT_RELAYS.slice(0, 3);
+    // General-purpose relays may not handle NIP-46's traffic (kind
+    // 24133, in Nostr's ephemeral range) the same way a relay built
+    // specifically for it does — some block or rate-limit ephemeral
+    // kinds. relay.nsecbunker.com is a commonly-referenced relay built
+    // for exactly this purpose; kept alongside our own general relays
+    // rather than replacing them, for redundancy.
+    const relays = [...DEFAULT_RELAYS.slice(0, 2), "wss://relay.nsecbunker.com"];
 
     const params = new URLSearchParams();
     for (const relay of relays) params.append("relay", relay);
