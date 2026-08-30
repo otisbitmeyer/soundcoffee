@@ -6,7 +6,7 @@ import { nip19 } from "nostr-tools";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import { useAuth } from "@/context/AuthContext";
-import { useNip99Listings } from "@/hooks/useNip99Listings";
+import { useNip99Listings, getVariationsOf } from "@/hooks/useNip99Listings";
 import { DEFAULT_RELAYS } from "@/lib/relays";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
@@ -95,7 +95,7 @@ function ListingRow({ listing, pubkey, signEvent, onDeleted, onEdit }) {
   }
 
   return (
-    <div className="border-b border-ink/10 py-3 last:border-b-0">
+    <div className="py-2">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           {listing.images?.[0] && (
@@ -167,6 +167,53 @@ function ListingRow({ listing, pubkey, signEvent, onDeleted, onEdit }) {
           leave blank for unlimited
         </span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * A single top-level listing (simple, or a variable parent) rendered
+ * via ListingRow — with its variations, if any, nested in a collapsed
+ * dropdown underneath instead of showing as separate flat rows.
+ */
+function ListingWithVariations({ listing, allListings, pubkey, signEvent, onDeleted, onEdit }) {
+  const variations =
+    listing.productType === "variable" ? getVariationsOf(allListings, listing.coordinate) : [];
+
+  return (
+    <div className="border-b border-ink/10 py-3 last:border-b-0">
+      <ListingRow
+        listing={listing}
+        pubkey={pubkey}
+        signEvent={signEvent}
+        onDeleted={onDeleted}
+        onEdit={onEdit}
+      />
+
+      {variations.length > 0 && (
+        <details className="group ml-[60px] mt-2">
+          <summary className="list-none cursor-pointer select-none font-display text-[11px] tracking-widest text-ink/40 marker:content-none hover:text-ink [&::-webkit-details-marker]:hidden">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block text-[9px] transition-transform duration-200 group-open:rotate-90">
+                ▸
+              </span>
+              {variations.length} VARIATION{variations.length === 1 ? "" : "S"}
+            </span>
+          </summary>
+          <div className="mt-2 border-l-2 border-ink/10 pl-4">
+            {variations.map((v) => (
+              <ListingRow
+                key={v.id}
+                listing={v}
+                pubkey={pubkey}
+                signEvent={signEvent}
+                onDeleted={onDeleted}
+                onEdit={onEdit}
+              />
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }
@@ -457,7 +504,7 @@ export default function SellPage() {
       <Header />
 
       <main className="admin-fonts flex-1 bg-paper">
-        <div className="mx-auto max-w-xl px-6 py-16">
+        <div className="mx-auto max-w-6xl px-6 py-16">
           <h1 className="text-center font-display text-4xl tracking-wide text-ink">
             {editingDTag ? "EDIT LISTING" : "NEW LISTING"}
           </h1>
@@ -498,8 +545,12 @@ export default function SellPage() {
             </p>
           )}
 
-          {isRightAccount && allListings && allListings.length > 0 && (
-            <div className="mt-10 border-2 border-ink/20 p-5">
+          {isRightAccount && (
+          <div className="mt-10 grid gap-8 lg:grid-cols-[380px_1fr] lg:items-start">
+          <div>
+
+          {allListings && allListings.length > 0 && (
+            <div className="border-2 border-ink/20 p-5">
               <h2 className="font-display text-lg tracking-wide text-ink">
                 YOUR LISTINGS
               </h2>
@@ -509,18 +560,21 @@ export default function SellPage() {
                 minutes to propagate everywhere.
               </p>
               {allListings
-                .filter((l) => !deletedCoords.has(l.coordinate))
+                .filter((l) => !deletedCoords.has(l.coordinate) && l.productType !== "variation")
                 .map((l) => (
-                  <ListingRow
+                  <ListingWithVariations
                     key={l.id}
                     listing={l}
+                    allListings={allListings.filter((x) => !deletedCoords.has(x.coordinate))}
                     pubkey={pubkey}
                     signEvent={signEvent}
                     onDeleted={handleDeleted}
                     onEdit={handleEdit}
                   />
                 ))}
-              {allListings.every((l) => deletedCoords.has(l.coordinate)) && (
+              {allListings
+                .filter((l) => l.productType !== "variation")
+                .every((l) => deletedCoords.has(l.coordinate)) && (
                 <p className="font-serif text-sm italic text-ink/50">
                   No listings left.
                 </p>
@@ -528,8 +582,11 @@ export default function SellPage() {
             </div>
           )}
 
+          </div>
+          <div>
+
           {isLoggedIn && isRightAccount && status !== "done" && (
-            <div className="mt-10 space-y-5 font-serif text-sm text-ink/80">
+            <div className="space-y-5 font-serif text-sm text-ink/80">
               <div>
                 <label className="block font-display text-xs tracking-widest text-ink/60">
                   TITLE
@@ -815,7 +872,7 @@ export default function SellPage() {
           )}
 
           {status === "done" && (
-            <div className="mt-10 space-y-4 text-center font-serif text-ink/80">
+            <div className="space-y-4 text-center font-serif text-ink/80">
               <p className="text-2xl">✓</p>
               <p>Listing published. It should show up in the Shop shortly.</p>
               <p className="text-xs italic text-ink/50">
@@ -828,6 +885,10 @@ export default function SellPage() {
                 PUBLISH ANOTHER
               </button>
             </div>
+          )}
+
+          </div>
+          </div>
           )}
         </div>
       </main>
