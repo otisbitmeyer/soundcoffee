@@ -778,7 +778,7 @@ export default function OrdersPage() {
 
           {isRightAccount && (relaysSearched.length > 0 || diagnostics) && (
             <details className="group mx-auto mt-6 max-w-2xl border-2 border-ink/15 text-xs text-ink/60">
-              <summary className="cursor-pointer select-none px-4 py-3 font-display tracking-widest text-ink/50 transition hover:text-ink [&::-webkit-details-marker]:hidden">
+              <summary className="list-none cursor-pointer select-none px-4 py-3 font-display tracking-widest text-ink/50 transition hover:text-ink marker:content-none [&::-webkit-details-marker]:hidden">
                 <span className="inline-flex items-center gap-2">
                   <span className="inline-block text-[10px] transition-transform duration-200 group-open:rotate-90">
                     ▸
@@ -881,31 +881,39 @@ export default function OrdersPage() {
 
           {isRightAccount &&
             messagesByOrder[UNASSIGNED_KEY]?.length > 0 && (
-              <div className="mx-auto mt-6 max-w-2xl border-2 border-rust bg-rust/5 p-5">
-                <h2 className="font-display text-sm tracking-widest text-rust">
-                  ⚠ {messagesByOrder[UNASSIGNED_KEY].length} MESSAGE
-                  {messagesByOrder[UNASSIGNED_KEY].length === 1 ? "" : "S"} NOT TIED TO ANY ORDER
-                </h2>
-                <p className="mt-1 font-serif text-xs text-ink/60">
-                  These didn&rsquo;t reference an order id, so they&rsquo;re
-                  shown here directly instead of filed under anything —
-                  worth a look, could be real customer questions.
-                </p>
-                <div className="mt-3 space-y-2">
-                  {messagesByOrder[UNASSIGNED_KEY]
-                    .slice()
-                    .sort((a, b) => b.createdAt - a.createdAt)
-                    .map((m, i) => (
-                      <div key={i} className="border border-ink/10 bg-paper p-3 font-serif text-sm">
-                        <p className="font-mono text-xs text-ink/40">
-                          {m.fromMe ? "You" : m.senderPubkey.slice(0, 12) + "…"} &middot;{" "}
-                          {new Date(m.createdAt * 1000).toLocaleString()}
-                        </p>
-                        <p className="mt-1">{m.content}</p>
-                      </div>
-                    ))}
+              <details className="group mx-auto mt-6 max-w-2xl border-2 border-rust/40 bg-rust/5">
+                <summary className="list-none cursor-pointer select-none px-4 py-3 font-display text-sm tracking-widest text-rust marker:content-none [&::-webkit-details-marker]:hidden">
+                  <span className="inline-flex items-center gap-2">
+                    <span className="inline-block text-[10px] transition-transform duration-200 group-open:rotate-90">
+                      ▸
+                    </span>
+                    ⚠ {messagesByOrder[UNASSIGNED_KEY].length} MESSAGE
+                    {messagesByOrder[UNASSIGNED_KEY].length === 1 ? "" : "S"} NOT TIED TO ANY ORDER
+                  </span>
+                </summary>
+
+                <div className="border-t-2 border-rust/20 px-5 py-4">
+                  <p className="font-serif text-xs text-ink/60">
+                    These didn&rsquo;t reference an order id, so they&rsquo;re
+                    shown here directly instead of filed under anything —
+                    worth a look, could be real customer questions.
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {messagesByOrder[UNASSIGNED_KEY]
+                      .slice()
+                      .sort((a, b) => b.createdAt - a.createdAt)
+                      .map((m, i) => (
+                        <div key={i} className="border border-ink/10 bg-paper p-3 font-serif text-sm">
+                          <p className="font-mono text-xs text-ink/40">
+                            {m.fromMe ? "You" : m.senderPubkey.slice(0, 12) + "…"} &middot;{" "}
+                            {new Date(m.createdAt * 1000).toLocaleString()}
+                          </p>
+                          <p className="mt-1">{m.content}</p>
+                        </div>
+                      ))}
+                  </div>
                 </div>
-              </div>
+              </details>
             )}
 
           {isRightAccount && error && (
