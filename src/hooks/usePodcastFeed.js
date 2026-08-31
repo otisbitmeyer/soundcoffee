@@ -7,7 +7,7 @@ const cache = new Map();
 /**
  * Fetches and parses an RSS feed's episodes via a CORS-friendly proxy.
  * Returns { episodes, feedInfo, loading, error }.
- *   episodes: array of { title, link, pubDate, description, audioUrl, guid, chaptersUrl }
+ *   episodes: array of { title, link, pubDate, description, audioUrl, guid, chaptersUrl, image }
  *   feedInfo: { title, description, image } for the show itself
  */
 export function usePodcastFeed(feedUrl) {
@@ -53,6 +53,7 @@ export function usePodcastFeed(feedUrl) {
           audioUrl: item.audioUrl || null,
           guid: item.guid,
           chaptersUrl: item.chaptersUrl || null,
+          image: item.image || null,
         }));
         const info = {
           title: data.feedInfo?.title,

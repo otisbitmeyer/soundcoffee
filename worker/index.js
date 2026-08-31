@@ -1072,6 +1072,11 @@ function parsePodcastRss(xml) {
     // Spec uses a "url" attribute here, not "href" — confirmed against
     // the actual podcast-namespace docs, not assumed.
     chaptersUrl: extractAttr(block, "podcast:chapters", "url"),
+    // Per-episode artwork — itunes:image uses "href", confirmed against
+    // the actual iTunes/Podcast Standards spec docs (different
+    // attribute name than podcast:chapters above, worth not assuming
+    // it'd be the same).
+    image: extractAttr(block, "itunes:image", "href"),
   }));
 
   return { feedInfo, items };

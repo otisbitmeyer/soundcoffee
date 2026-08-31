@@ -122,11 +122,21 @@ function EpisodeCard({ episode }) {
     <div className="border-2 border-paper/30 transition hover:border-jade">
       <div className="p-6">
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <span className="font-display text-sm tracking-widest text-jade">
-              {formatDate(episode.pubDate)}
-            </span>
-            <h3 className="mt-2 font-display text-xl">{episode.title}</h3>
+          <div className="flex items-start gap-4">
+            {episode.image && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={episode.image}
+                alt=""
+                className="h-16 w-16 shrink-0 border border-paper/30 object-cover"
+              />
+            )}
+            <div>
+              <span className="font-display text-sm tracking-widest text-jade">
+                {formatDate(episode.pubDate)}
+              </span>
+              <h3 className="mt-2 font-display text-xl">{episode.title}</h3>
+            </div>
           </div>
 
           <div className="flex shrink-0 flex-col items-end gap-2">
@@ -135,14 +145,14 @@ function EpisodeCard({ episode }) {
                 onClick={() => setPlaying((p) => !p)}
                 className="border-2 border-paper/50 px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:border-jade hover:text-jade"
               >
-                {playing ? "CLOSE" : "PLAY ▸"}
+                {playing ? "CLOSE" : "LISTEN ▸"}
               </button>
             ) : (
               <a
                 href={episode.link}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-display text-sm tracking-widest text-paper/50 hover:text-jade"
+                className="border-2 border-paper/50 px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:border-jade hover:text-jade"
               >
                 LISTEN &rarr;
               </a>
@@ -155,7 +165,7 @@ function EpisodeCard({ episode }) {
                 episodeGuid={episode.guid}
                 eventId={noteId || undefined}
                 onZapped={refresh}
-                className="font-display text-xs tracking-widest text-jade transition hover:text-paper"
+                className="border-2 border-jade/60 px-4 py-2 font-display text-sm tracking-widest text-jade transition hover:border-jade hover:bg-jade hover:text-ink"
               >
                 ⚡ ZAP
               </ZapButton>
