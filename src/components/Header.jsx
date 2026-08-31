@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useProfile } from "@/hooks/useProfile";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 import LoginModal from "./LoginModal";
+import CartButton from "./CartButton";
 
 function shortNpub(npub) {
   if (!npub) return "";
@@ -65,6 +66,8 @@ export default function Header() {
               <span className="h-0.5 w-5 bg-ink" />
             </button>
           </div>
+
+          <CartButton className="relative mr-1 font-display text-sm tracking-widest text-ink hover:text-rust" />
 
           {restoring ? (
             <div className="h-9 w-24" />

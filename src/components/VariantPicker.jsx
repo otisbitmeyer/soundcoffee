@@ -2,7 +2,6 @@
 
 import { useState, useMemo } from "react";
 import ImageGallery from "./ImageGallery";
-import { buyButtonLabel } from "@/lib/buyButtonLabel";
 import { useBtcUsdPrice } from "@/hooks/useBtcUsdPrice";
 import { formatDualPrice } from "@/lib/formatPrice";
 
@@ -140,7 +139,7 @@ export default function VariantPicker({ parentListing, variations, onSelect, onC
             disabled={!matchedVariation || matchedVariation.status === "sold"}
             className="w-full border-2 border-ink bg-ink px-4 py-3 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {matchedVariation ? buyButtonLabel(parentListing.title) : "SELECT OPTIONS"}
+            {matchedVariation ? "ADD TO CART" : "SELECT OPTIONS"}
           </button>
         </div>
       </div>

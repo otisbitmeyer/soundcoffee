@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import CheckoutModal from "./CheckoutModal";
 import VariantPicker from "./VariantPicker";
 import ImageGallery from "./ImageGallery";
 import { getVariationsOf } from "@/hooks/useNip99Listings";
-import { buyButtonLabel } from "@/lib/buyButtonLabel";
 import { useBtcUsdPrice } from "@/hooks/useBtcUsdPrice";
 import { formatDualPrice } from "@/lib/formatPrice";
+import { useCart } from "@/context/CartContext";
 
 const SUMMARY_LIMIT = 90;
 
@@ -40,16 +39,32 @@ function formatPrice(price, btcUsdPrice) {
 }
 
 export default function ProductCard({ listing, sellerPubkey, allListings }) {
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [chosenVariation, setChosenVariation] = useState(null);
   const [expanded, setExpanded] = useState(false);
+  const [justAdded, setJustAdded] = useState(false);
   const { btcUsdPrice } = useBtcUsdPrice();
+  const { addItem } = useCart();
 
   const isVariable = listing.productType === "variable";
   const variations = isVariable ? getVariationsOf(allListings, listing.coordinate) : [];
 
   const priceLabel = isVariable ? null : formatPrice(listing.price, btcUsdPrice);
+
+  function handleAddToCart(item) {
+    addItem({
+      coordinate: item.coordinate,
+      sellerPubkey,
+      title: item.title,
+      price: item.price,
+      quantity: 1,
+      image: item.images?.[0] || null,
+      format: item.format,
+      shippingCost: item.shippingCost || null,
+      shippingOptionCoords: item.shippingOptionCoords || null,
+    });
+    setJustAdded(true);
+    setTimeout(() => setJustAdded(false), 1500);
+  }
 
   // Prefer the longer markdown content for the expanded view, falling
   // back to the summary if that's all there is.
@@ -92,7 +107,7 @@ export default function ProductCard({ listing, sellerPubkey, allListings }) {
 
         <div className="mt-4 pt-2">
           <button
-            onClick={() => (isVariable ? setPickerOpen(true) : setCheckoutOpen(true))}
+            onClick={() => (isVariable ? setPickerOpen(true) : handleAddToCart(listing))}
             disabled={isVariable && variations.length === 0}
             className="w-full border-2 border-ink bg-ink px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -100,7 +115,9 @@ export default function ProductCard({ listing, sellerPubkey, allListings }) {
               ? variations.length === 0
                 ? "COMING SOON"
                 : "SELECT OPTIONS"
-              : buyButtonLabel(listing.title)}
+              : justAdded
+              ? "✓ ADDED"
+              : `ADD TO CART`}
           </button>
         </div>
       </div>
@@ -110,22 +127,10 @@ export default function ProductCard({ listing, sellerPubkey, allListings }) {
           parentListing={listing}
           variations={variations}
           onSelect={(variation) => {
-            setChosenVariation(variation);
+            handleAddToCart(variation);
             setPickerOpen(false);
-            setCheckoutOpen(true);
           }}
           onClose={() => setPickerOpen(false)}
-        />
-      )}
-
-      {checkoutOpen && (
-        <CheckoutModal
-          listing={chosenVariation || listing}
-          sellerPubkey={sellerPubkey}
-          onClose={() => {
-            setCheckoutOpen(false);
-            setChosenVariation(null);
-          }}
         />
       )}
     </div>

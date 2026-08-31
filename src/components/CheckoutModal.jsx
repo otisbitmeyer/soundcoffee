@@ -4,13 +4,13 @@ import { useState, useRef } from "react";
 import QRCode from "qrcode";
 import { SimplePool } from "nostr-tools/pool";
 import { useAuth } from "@/context/AuthContext";
+import { useCart } from "@/context/CartContext";
 import { useProfile } from "@/hooks/useProfile";
 import { useEnsureIdentity } from "@/hooks/useEnsureIdentity";
 import { resolveLud16, requestPlainInvoice } from "@/lib/zap";
 import { giftWrapForBoth } from "@/lib/nip17";
 import { DEFAULT_RELAYS, getDmRelaysFor } from "@/lib/relays";
 import { useBtcUsdPrice, usdToSats } from "@/hooks/useBtcUsdPrice";
-import { useShippingOption } from "@/hooks/useShippingOption";
 import { formatDualPrice } from "@/lib/formatPrice";
 import LoginModal from "./LoginModal";
 import WalletConnectPay from "./WalletConnectPay";
@@ -28,6 +28,24 @@ function satsFromSatsOrBtc(price) {
   return null;
 }
 
+// Converts a price object (any supported currency) to sats, given the
+// live BTC price. Returns null if it can't be determined right now
+// (e.g. a non-USD fiat currency, or the price feed hasn't loaded).
+function priceToSats(price, btcUsdPrice) {
+  if (!price) return null;
+  const isFiatUsd = (price.currency || "").toLowerCase() === "usd";
+  const direct = satsFromSatsOrBtc(price);
+  return direct ?? (isFiatUsd ? usdToSats(price.amount, btcUsdPrice) : null);
+}
+
+function priceToUsdCents(price, sats, btcUsdPrice) {
+  if (!price) return null;
+  const isFiatUsd = (price.currency || "").toLowerCase() === "usd";
+  if (isFiatUsd) return Math.round(Number(price.amount) * 100);
+  if (sats && btcUsdPrice) return Math.round((sats / 100_000_000) * btcUsdPrice * 100);
+  return null;
+}
+
 // The Gamma spec's "address" tag is a single freeform string — no
 // separate city/state/zip fields exist on the wire. We still collect
 // them as distinct inputs for a much better checkout experience, and
@@ -39,13 +57,18 @@ function formatAddress({ line1, line2, city, stateRegion, zip, country }) {
   return [line1, line2, line3, country].filter((s) => s && s.trim()).join("\n");
 }
 
-export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
+export default function CheckoutModal({ onClose }) {
   const { isLoggedIn, pubkey, npub, signEvent, nip44Encrypt } = useAuth();
+  const { items: cartItems, clearCart } = useCart();
+  // Carts are single-seller for now — every product on this site comes
+  // from Sound Coffee's own /sell page, so this holds in practice. If
+  // that ever changes, this is the point where a real multi-seller
+  // split would need to happen (separate orders per seller).
+  const sellerPubkey = cartItems[0]?.sellerPubkey;
   const { profile: sellerProfile } = useProfile(sellerPubkey);
   const { btcUsdPrice, loading: priceLoading, error: priceError } = useBtcUsdPrice();
 
   const [showLogin, setShowLogin] = useState(false);
-  const [quantity, setQuantity] = useState(1);
   const [addressLine1, setAddressLine1] = useState("");
   const [addressLine2, setAddressLine2] = useState("");
   const [city, setCity] = useState("");
@@ -67,55 +90,45 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
   // re-render. This ref updates synchronously, so it can't be raced.
   const submittingRef = useRef(false);
 
-  const shippingCoord = listing.shippingOptionCoords?.[0] || null;
-  // Skip the relay round-trip entirely when the listing already has the
-  // cost inline (Conduit does this) — faster, and works even if the
-  // referenced shipping_option event isn't found anywhere we search.
-  const { option: fetchedShippingOption, loading: shippingLoading } = useShippingOption(
-    listing.shippingCost ? null : shippingCoord
+  // Per-line sats/usd, then summed for the cart total.
+  const linePrices = cartItems.map((item) => {
+    const sats = priceToSats(item.price, btcUsdPrice);
+    return {
+      item,
+      unitSats: sats,
+      lineSats: sats != null ? sats * item.quantity : null,
+      unitUsdCents: priceToUsdCents(item.price, sats, btcUsdPrice),
+    };
+  });
+  const allItemsPriced = linePrices.every((l) => l.lineSats != null);
+  const itemsSats = allItemsPriced ? linePrices.reduce((sum, l) => sum + l.lineSats, 0) : null;
+  const itemsUsdCents = allItemsPriced
+    ? linePrices.reduce((sum, l) => sum + (l.unitUsdCents || 0) * l.item.quantity, 0)
+    : null;
+
+  // Shipping: the highest single physical item's shipping cost, rest
+  // free — simplest reasonable default for a combined-cart order.
+  // Known limitation: only accounts for items with an inline
+  // shippingCost (what our own listings and Conduit's both use) — an
+  // item that only has shippingOptionCoords (needs a relay fetch) isn't
+  // counted here, so its shipping wouldn't be reflected in this total.
+  const physicalItemsWithShipping = cartItems.filter(
+    (i) => i.format === "physical" && i.shippingCost
   );
-  const shippingOption = listing.shippingCost
-    ? { title: "Shipping", price: listing.shippingCost }
-    : fetchedShippingOption;
-
-  const isFiatUsd = listing.price && (listing.price.currency || "").toLowerCase() === "usd";
-  const directSats = listing.price ? satsFromSatsOrBtc(listing.price) : null;
-  const unitSats = directSats ?? (isFiatUsd ? usdToSats(listing.price.amount, btcUsdPrice) : null);
-
-  const shippingIsFiatUsd =
-    shippingOption?.price && (shippingOption.price.currency || "").toLowerCase() === "usd";
-  const shippingSats = shippingOption?.price
-    ? (satsFromSatsOrBtc(shippingOption.price) ??
-       (shippingIsFiatUsd ? usdToSats(shippingOption.price.amount, btcUsdPrice) : null))
+  const shippingSatsCandidates = physicalItemsWithShipping
+    .map((i) => priceToSats(i.shippingCost, btcUsdPrice))
+    .filter((s) => s != null);
+  const shippingSats = shippingSatsCandidates.length > 0 ? Math.max(...shippingSatsCandidates) : 0;
+  const shippingItem = physicalItemsWithShipping.find(
+    (i) => priceToSats(i.shippingCost, btcUsdPrice) === shippingSats
+  );
+  const shippingUsdCents = shippingItem
+    ? priceToUsdCents(shippingItem.shippingCost, shippingSats, btcUsdPrice)
     : 0;
 
-  const totalSats = unitSats ? unitSats * quantity + (shippingSats || 0) : null;
-  const requiresShipping = listing.format === "physical";
-
-  // Shipping's own USD-equivalent, independent of the item's currency —
-  // needed to show "X sats · $Y.YY" for shipping specifically, not just
-  // the order total.
-  const shippingUsdCents = shippingOption?.price
-    ? shippingIsFiatUsd
-      ? Math.round(Number(shippingOption.price.amount) * 100)
-      : shippingSats && btcUsdPrice
-      ? Math.round((shippingSats / 100_000_000) * btcUsdPrice * 100)
-      : null
-    : null;
-
-  // For card payments, Stripe needs a USD amount regardless of how the
-  // item is priced. If already USD, use that directly (more accurate
-  // than converting through sats and back). Otherwise derive USD from
-  // the same live BTC price used everywhere else on the site.
-  const totalUsdCents = isFiatUsd
-    ? Math.round(
-        (Number(listing.price.amount) * quantity +
-          (shippingIsFiatUsd ? Number(shippingOption.price.amount) : 0)) *
-          100
-      )
-    : totalSats && btcUsdPrice
-    ? Math.round((totalSats / 100_000_000) * btcUsdPrice * 100)
-    : null;
+  const requiresShipping = cartItems.some((i) => i.format === "physical");
+  const totalSats = itemsSats != null ? itemsSats + shippingSats : null;
+  const totalUsdCents = itemsUsdCents != null ? itemsUsdCents + (shippingUsdCents || 0) : null;
 
   const ensureIdentityBase = useEnsureIdentity();
 
@@ -158,15 +171,25 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
     country,
   });
 
+  const cartSummary =
+    cartItems.length === 1
+      ? cartItems[0].title
+      : `${cartItems[0]?.title}${cartItems.length > 1 ? ` + ${cartItems.length - 1} more item${cartItems.length > 2 ? "s" : ""}` : ""}`;
+
   async function handlePlaceOrder(paymentMethod) {
     if (submittingRef.current) return; // already placing this order — ignore extra clicks
+    if (cartItems.length === 0) {
+      setError("Your cart is empty.");
+      setStatus("error");
+      return;
+    }
     if (!totalSats) {
-      setError("This item isn't priced yet, so checkout isn't available for it.");
+      setError("Something in your cart isn't priced correctly, so checkout isn't available right now.");
       setStatus("error");
       return;
     }
     if (requiresShipping && !combinedAddress) {
-      setError("This is a physical item — a shipping address is needed.");
+      setError("Your cart includes a physical item — a shipping address is needed.");
       setStatus("error");
       return;
     }
@@ -190,16 +213,17 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
       const newOrderId = crypto.randomUUID();
       setOrderId(newOrderId);
 
-      // Reserve stock before doing anything else — if it's sold out,
-      // stop here rather than sending an order message for something
-      // that can't actually be fulfilled. Holds automatically expire on
-      // their own if checkout is abandoned, so nothing needs cleanup.
+      // Reserve stock for every item in the cart before doing anything
+      // else — atomically, so it can't partially succeed (reserve the
+      // shirt, then discover the coffee just sold out). Holds
+      // automatically expire on their own if checkout is abandoned, so
+      // nothing needs cleanup.
       const reserveRes = await fetch("/api/inventory/reserve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderId: newOrderId,
-          items: [{ coordinate: listing.coordinate, quantity }],
+          items: cartItems.map((i) => ({ coordinate: i.coordinate, quantity: i.quantity })),
         }),
       });
       const reserveData = await reserveRes.json();
@@ -207,23 +231,30 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
         const failure = reserveData.failures?.[0];
         throw new Error(
           failure
-            ? `Sorry — only ${failure.available} left in stock, and you requested ${failure.requested}.`
-            : "That item just sold out."
+            ? `Sorry — only ${failure.available} left of "${
+                cartItems.find((i) => i.coordinate === failure.coordinate)?.title || "that item"
+              }", and you requested ${failure.requested}.`
+            : "Something in your cart just sold out."
         );
       }
 
       const orderTags = [
         ["p", sellerPubkey],
-        ["subject", `Order: ${listing.title}`],
+        ["subject", `Order: ${cartSummary}`],
         ["type", "order"],
         ["order", newOrderId],
         ["amount", String(totalSats)],
         ["currency", "SATS"],
-        ["item", listing.coordinate, String(quantity)],
+        ...cartItems.map((i) => ["item", i.coordinate, String(i.quantity)]),
       ];
       if (combinedAddress) orderTags.push(["address", combinedAddress]);
       if (email.trim()) orderTags.push(["email", email.trim()]);
-      if (shippingCoord) orderTags.push(["shipping", shippingCoord]);
+      // Referencing the specific listing whose shipping cost was
+      // actually charged, for anything reading this order that wants
+      // to look up the shipping option itself.
+      if (shippingItem?.shippingOptionCoords?.[0]) {
+        orderTags.push(["shipping", shippingItem.shippingOptionCoords[0]]);
+      }
 
       await sendGiftWrapped(
         {
@@ -248,7 +279,11 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
           paymentMethod,
           amountSats: totalSats,
           amountUsdCents: totalUsdCents,
-          items: [{ coordinate: listing.coordinate, quantity, title: listing.title }],
+          items: cartItems.map((i) => ({
+            coordinate: i.coordinate,
+            quantity: i.quantity,
+            title: i.title,
+          })),
           address: {
             line1: addressLine1.trim() || null,
             line2: addressLine2.trim() || null,
@@ -271,8 +306,8 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderId: newOrderId,
-          itemTitle: listing.title,
-          quantity,
+          itemTitle: cartSummary,
+          quantity: cartItems.reduce((sum, i) => sum + i.quantity, 0),
           amountSats: totalSats,
           buyerNpub: identity.isGuest ? null : npub,
           buyerEmail: email.trim() || null,
@@ -307,7 +342,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             orderId: newOrderId,
-            itemTitle: listing.title,
+            itemTitle: cartSummary,
             amountUsdCents: totalUsdCents,
             buyerEmail: email.trim() || null,
             successUrl: `${origin}?stripe_success=1&order=${newOrderId}`,
@@ -317,6 +352,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
         const session = await res.json();
         if (!session.url) throw new Error(session.error || "Couldn't start card checkout.");
 
+        clearCart(); // paying now, leaving the page — cart's job is done
         window.location.href = session.url; // leaves the page — Stripe takes over from here
         return;
       }
@@ -353,6 +389,7 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
       setInvoice(pr);
       setQrDataUrl(qr);
       setStatus("invoice");
+      clearCart(); // order's placed and awaiting payment — cart's job is done
 
       // Best-effort — if Branta isn't configured yet, this just silently
       // does nothing and the invoice/QR flow works exactly as before.
@@ -439,31 +476,34 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
           {(status === "form" || status === "working" || status === "error") && (
             <div className="space-y-4 font-serif text-sm text-ink/80">
-              <div>
-                <h3 className="font-display text-lg text-ink">{listing.title}</h3>
-                {directSats ? (
-                  <p className="mt-1 text-ink/60">{directSats.toLocaleString()} sats each</p>
-                ) : isFiatUsd ? (
+              <div className="space-y-2">
+                {cartItems.map((item) => (
+                  <div key={item.coordinate} className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      {item.image && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={item.image}
+                          alt=""
+                          className="h-10 w-10 shrink-0 border border-ink/20 object-cover"
+                        />
+                      )}
+                      <div>
+                        <p className="font-display text-sm text-ink">{item.title}</p>
+                        <p className="text-xs text-ink/50">Qty {item.quantity}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {!allItemsPriced && (
                   priceLoading ? (
-                    <p className="mt-1 text-ink/50 italic">Fetching current sats price…</p>
-                  ) : priceError || !unitSats ? (
-                    <p className="mt-1 text-rust">
-                      Couldn&rsquo;t fetch a live sats price right now &mdash;
-                      try again in a moment.
-                    </p>
+                    <p className="text-xs italic text-ink/50">Fetching current sats price…</p>
                   ) : (
-                    <p className="mt-1 text-ink/60">
-                      ${listing.price.amount} &asymp; {unitSats.toLocaleString()} sats each{" "}
-                      <span className="text-ink/40">
-                        (${btcUsdPrice.toLocaleString()}/BTC)
-                      </span>
+                    <p className="text-xs text-rust">
+                      Couldn&rsquo;t price everything in your cart right now — try
+                      again in a moment.
                     </p>
                   )
-                ) : (
-                  <p className="mt-1 text-rust">
-                    Priced in {listing.price?.currency || "an unsupported currency"} —
-                    Lightning checkout needs a sats or USD price.
-                  </p>
                 )}
               </div>
 
@@ -482,32 +522,19 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
 
               <div>
                 <label className="block font-display text-xs tracking-widest text-ink/60">
-                  QUANTITY
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={quantity}
-                  onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
-                  className="mt-1 w-24 border-2 border-ink/30 px-3 py-2 font-display text-sm text-ink focus:border-ink focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block font-display text-xs tracking-widest text-ink/60">
                   SHIPPING ADDRESS{requiresShipping ? "" : " (OPTIONAL)"}
                 </label>
                 <div className="mt-1 space-y-2">
                   <input
                     value={addressLine1}
                     onChange={(e) => setAddressLine1(e.target.value)}
-                    placeholder="Street address"
+                    placeholder="Address line 1"
                     className="w-full border-2 border-ink/30 px-3 py-2 font-serif text-sm text-ink focus:border-ink focus:outline-none"
                   />
                   <input
                     value={addressLine2}
                     onChange={(e) => setAddressLine2(e.target.value)}
-                    placeholder="Apt, suite, etc. (optional)"
+                    placeholder="Address line 2 (optional)"
                     className="w-full border-2 border-ink/30 px-3 py-2 font-serif text-sm text-ink focus:border-ink focus:outline-none"
                   />
                   <div className="grid grid-cols-2 gap-2">
@@ -576,10 +603,6 @@ export default function CheckoutModal({ listing, sellerPubkey, onClose }) {
                     </p>
                   ) : null}
                 </div>
-              )}
-
-              {shippingLoading && (
-                <p className="text-xs text-ink/40">Loading shipping option…</p>
               )}
 
               {error && (
