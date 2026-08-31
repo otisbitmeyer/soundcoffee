@@ -162,12 +162,12 @@ export default function ProductCard({ listing, sellerPubkey, allListings }) {
         {shortText && (
           <div className="mt-1 font-serif text-sm text-ink/60">
             <p>{expanded ? fullText : truncated}</p>
-            {(needsTruncation || (expanded && fullText !== shortText)) && (
+            {(needsTruncation || fullText !== shortText) && (
               <button
                 onClick={() => setExpanded((e) => !e)}
                 className="mt-1 font-display text-xs tracking-widest text-rust hover:text-ink"
               >
-                {expanded ? "SHOW LESS" : "READ MORE"}
+                {expanded ? "SHOW LESS" : "LEARN MORE"}
               </button>
             )}
           </div>
