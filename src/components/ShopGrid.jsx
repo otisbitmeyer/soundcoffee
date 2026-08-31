@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { useNip99Listings } from "@/hooks/useNip99Listings";
 import { SELLERS } from "@/lib/sellers";
@@ -7,6 +8,21 @@ import ProductCard from "./ProductCard";
 
 function SellerListings({ seller }) {
   const { listings, allListings, loading, error } = useNip99Listings(seller.pubkey);
+  const searchParams = useSearchParams();
+  const sharedProduct = searchParams.get("product");
+
+  // Only once the actual listing has loaded — scrolling to an element
+  // that doesn't exist yet does nothing, so this waits for `listings`
+  // to actually contain it.
+  useEffect(() => {
+    if (!sharedProduct || !listings?.some((l) => l.dTag === sharedProduct)) return;
+    const el = document.getElementById(`product-${sharedProduct}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("ring-4", "ring-jade");
+    const timeout = setTimeout(() => el.classList.remove("ring-4", "ring-jade"), 2500);
+    return () => clearTimeout(timeout);
+  }, [sharedProduct, listings]);
 
   if (error) {
     return (
