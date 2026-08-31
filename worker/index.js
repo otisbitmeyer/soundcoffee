@@ -1067,6 +1067,11 @@ function parsePodcastRss(xml) {
     description: extractTag(block, "content:encoded") || extractTag(block, "description"),
     audioUrl: extractAttr(block, "enclosure", "url"),
     guid: extractTag(block, "guid"),
+    // Podcast Namespace chapters — a JSON file the host (PodHome, etc.)
+    // generates and links per-episode, not embedded content itself.
+    // Spec uses a "url" attribute here, not "href" — confirmed against
+    // the actual podcast-namespace docs, not assumed.
+    chaptersUrl: extractAttr(block, "podcast:chapters", "url"),
   }));
 
   return { feedInfo, items };
@@ -1087,6 +1092,32 @@ async function handlePodcastFeed(request, env) {
     const xml = await res.text();
     const { feedInfo, items } = parsePodcastRss(xml);
     return jsonResponse({ status: "ok", feedInfo, items });
+  } catch (e) {
+    return jsonResponse({ error: e.message }, 502);
+  }
+}
+
+/**
+ * Proxies a Podcast Namespace chapters JSON file — same CORS reasoning
+ * as the feed proxy above, these are hosted wherever the podcast host
+ * (PodHome, etc.) puts them, not on our own domain.
+ */
+async function handlePodcastChapters(request, env) {
+  const url = new URL(request.url);
+  const chaptersUrl = url.searchParams.get("url");
+  if (!chaptersUrl) return jsonResponse({ error: "Missing ?url=" }, 422);
+
+  try {
+    const res = await fetch(chaptersUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; SoundCoffeeBot/1.0)" },
+    });
+    if (!res.ok) {
+      return jsonResponse({ error: `Chapters file returned ${res.status}` }, 502);
+    }
+    const data = await res.json();
+    // Spec shape: { version, chapters: [{ startTime, title, img?, url? }] }
+    // — passed through as-is, just proxied for CORS, not reshaped.
+    return jsonResponse(data);
   } catch (e) {
     return jsonResponse({ error: e.message }, 502);
   }
@@ -1269,6 +1300,9 @@ async function handleFetch(request, env) {
   }
   if (request.method === "GET" && url.pathname === "/api/podcast-feed") {
     return handlePodcastFeed(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/podcast-chapters") {
+    return handlePodcastChapters(request, env);
   }
   if (request.method === "GET" && url.pathname === "/api/club-members") {
     return handleClubMembers(env);

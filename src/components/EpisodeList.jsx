@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { SimplePool } from "nostr-tools/pool";
 import ZapButton from "./ZapButton";
 import EpisodeComments from "./EpisodeComments";
 import { useEpisodeZaps } from "@/hooks/useEpisodeZaps";
 import { useEpisodeNote } from "@/hooks/useEpisodeNote";
+import { useChapters } from "@/hooks/useChapters";
 import { useAuth } from "@/context/AuthContext";
 import { episodeTags } from "@/lib/episodeId";
 import { DEFAULT_RELAYS } from "@/lib/relays";
@@ -36,14 +37,56 @@ function formatDate(dateString) {
   }
 }
 
+function formatChapterTime(seconds) {
+  const total = Math.floor(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = String(m).padStart(h > 0 ? 2 : 1, "0");
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${mm}:${ss}`;
+}
+
 function EpisodeCard({ episode }) {
   const [playing, setPlaying] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
+  const [chaptersOpen, setChaptersOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const { data, loading, refresh } = useEpisodeZaps(episode.guid);
   const { noteId, loading: noteLoading, refresh: refreshNote } = useEpisodeNote(episode.guid);
+  const { chapters, loading: chaptersLoading, load: loadChapters } = useChapters(episode.chaptersUrl);
   const { pubkey, signEvent } = useAuth();
   const isSoundCoffeeAccount = pubkey === SOUND_COFFEE_PUBKEY;
+
+  const audioRef = useRef(null);
+  const pendingSeekRef = useRef(null); // seconds to seek to once the audio element is ready
+
+  // Applies a pending seek once the <audio> element actually exists —
+  // covers both "already playing, seek immediately" and "wasn't
+  // playing yet, start playing then seek once mounted".
+  useEffect(() => {
+    if (playing && pendingSeekRef.current != null && audioRef.current) {
+      audioRef.current.currentTime = pendingSeekRef.current;
+      audioRef.current.play().catch(() => {});
+      pendingSeekRef.current = null;
+    }
+  }, [playing]);
+
+  function handleChapterClick(startTime) {
+    pendingSeekRef.current = startTime;
+    if (playing && audioRef.current) {
+      audioRef.current.currentTime = startTime;
+      audioRef.current.play().catch(() => {});
+      pendingSeekRef.current = null;
+    } else {
+      setPlaying(true); // effect above applies the seek once mounted
+    }
+  }
+
+  function toggleChapters() {
+    if (!chaptersOpen) loadChapters();
+    setChaptersOpen((o) => !o);
+  }
 
   async function handlePublishNote() {
     setPublishing(true);
@@ -97,6 +140,7 @@ function EpisodeCard({ episode }) {
 
         {playing && episode.audioUrl && (
           <audio
+            ref={audioRef}
             controls
             autoPlay
             src={episode.audioUrl}
@@ -128,6 +172,14 @@ function EpisodeCard({ episode }) {
               >
                 ZAPS AND CONVERSATION {commentsOpen ? "▲" : "▼"}
               </button>
+              {episode.chaptersUrl && (
+                <button
+                  onClick={toggleChapters}
+                  className="font-display text-xs tracking-widest text-paper/60 transition hover:text-jade"
+                >
+                  CHAPTERS {chaptersOpen ? "▲" : "▼"}
+                </button>
+              )}
               {isSoundCoffeeAccount && !noteLoading && !noteId && (
                 <button
                   onClick={handlePublishNote}
@@ -149,6 +201,36 @@ function EpisodeCard({ episode }) {
           </div>
 
           {commentsOpen && <EpisodeComments data={data} loading={loading} />}
+
+          {chaptersOpen && (
+            <div className="border-t border-paper/20 px-6 py-3">
+              {chaptersLoading && (
+                <p className="font-serif text-xs text-paper/50">Loading chapters…</p>
+              )}
+              {!chaptersLoading && chapters?.length > 0 && (
+                <ul className="space-y-1.5">
+                  {chapters.map((ch, i) => (
+                    <li key={i}>
+                      <button
+                        onClick={() => handleChapterClick(ch.startTime)}
+                        className="flex w-full items-baseline gap-3 text-left font-serif text-sm text-paper/80 hover:text-jade"
+                      >
+                        <span className="shrink-0 font-mono text-xs text-jade/70">
+                          {formatChapterTime(ch.startTime)}
+                        </span>
+                        {ch.title}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!chaptersLoading && chapters?.length === 0 && (
+                <p className="font-serif text-xs italic text-paper/40">
+                  No chapters for this episode.
+                </p>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
