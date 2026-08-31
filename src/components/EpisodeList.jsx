@@ -243,13 +243,21 @@ function EpisodeCard({ episode, showImage }) {
                 <p className="font-serif text-xs text-paper/50">Loading chapters…</p>
               )}
               {!chaptersLoading && chapters?.length > 0 && (
-                <ul className="space-y-1.5">
+                <ul className="space-y-2">
                   {chapters.map((ch, i) => (
                     <li key={i}>
                       <button
                         onClick={() => handleChapterClick(ch.startTime)}
-                        className="flex w-full items-baseline gap-3 text-left font-serif text-sm text-paper/80 hover:text-jade"
+                        className="flex w-full items-center gap-3 text-left font-serif text-sm text-paper/80 hover:text-jade"
                       >
+                        {ch.img && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={ch.img}
+                            alt=""
+                            className="h-10 w-10 shrink-0 border border-paper/20 object-cover"
+                          />
+                        )}
                         <span className="shrink-0 font-mono text-xs text-jade/70">
                           {formatChapterTime(ch.startTime)}
                         </span>
