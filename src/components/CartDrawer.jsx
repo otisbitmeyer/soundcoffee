@@ -39,7 +39,10 @@ export default function CartDrawer() {
   return (
     <>
       {drawerOpen && (
-      <div className="fixed inset-0 z-[110] flex justify-end bg-ink/60">
+      <div
+        className="fixed inset-0 z-[110] flex justify-end bg-ink/60"
+        onClick={(e) => e.target === e.currentTarget && setDrawerOpen(false)}
+      >
         <div className="flex h-full w-full max-w-sm flex-col border-l-2 border-ink bg-paper">
           <div className="flex items-center justify-between border-b-2 border-ink px-5 py-4">
             <h2 className="font-display text-lg tracking-wide text-ink">YOUR CART</h2>
@@ -81,7 +84,16 @@ export default function CartDrawer() {
                         >
                           −
                         </button>
-                        <span className="font-serif text-sm text-ink">{item.quantity}</span>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const n = parseInt(e.target.value, 10);
+                            if (!isNaN(n)) updateQuantity(item.coordinate, n);
+                          }}
+                          className="w-14 border border-ink/30 py-1 text-center font-serif text-sm text-ink focus:border-ink focus:outline-none"
+                        />
                         <button
                           onClick={() => updateQuantity(item.coordinate, item.quantity + 1)}
                           className="border border-ink/30 px-[14px] py-1 font-display text-[21px] text-ink hover:border-ink"

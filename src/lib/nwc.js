@@ -7,9 +7,17 @@
 // the buyer's main Nostr identity. We use it only to sign/encrypt
 // requests to that one wallet, and only for the current checkout unless
 // the person explicitly chooses to save it for next time.
+//
+// Encryption: NIP-04 was the original scheme NWC used, but per the
+// current spec it's now deprecated in favor of NIP-44 — a wallet may
+// not support NIP-04 at all anymore. The wallet advertises what it
+// supports via an "encryption" tag on its own info event (kind 13194);
+// we check that first and use NIP-44 whenever it's offered, only
+// falling back to NIP-04 for wallets that haven't migrated.
 
 import { getPublicKey, finalizeEvent } from "nostr-tools/pure";
 import { encrypt as nip04Encrypt, decrypt as nip04Decrypt } from "nostr-tools/nip04";
+import { getConversationKey, encrypt as nip44EncryptRaw, decrypt as nip44DecryptRaw } from "nostr-tools/nip44";
 import { hexToBytes } from "nostr-tools/utils";
 import { SimplePool } from "nostr-tools/pool";
 
@@ -43,6 +51,39 @@ function getPool() {
 }
 
 /**
+ * Checks the wallet's own info event (kind 13194) for which encryption
+ * schemes it supports, and picks the best one. Defaults to nip04 if we
+ * can't find an info event at all — that's what the spec says the
+ * absence of the tag implies.
+ */
+async function negotiateEncryption(pool, relays, walletPubkey) {
+  try {
+    const infoEvent = await pool.get(relays, { kinds: [13194], authors: [walletPubkey] });
+    const encryptionTag = infoEvent?.tags?.find((t) => t[0] === "encryption");
+    const supported = encryptionTag?.[1]?.split(" ") || [];
+    return supported.includes("nip44_v2") ? "nip44_v2" : "nip04";
+  } catch {
+    return "nip04";
+  }
+}
+
+function encryptFor(scheme, secretKey, pubkey, plaintext) {
+  if (scheme === "nip44_v2") {
+    const conversationKey = getConversationKey(secretKey, pubkey);
+    return nip44EncryptRaw(plaintext, conversationKey);
+  }
+  return nip04Encrypt(secretKey, pubkey, plaintext);
+}
+
+function decryptFor(scheme, secretKey, pubkey, ciphertext) {
+  if (scheme === "nip44_v2") {
+    const conversationKey = getConversationKey(secretKey, pubkey);
+    return nip44DecryptRaw(ciphertext, conversationKey);
+  }
+  return nip04Decrypt(secretKey, pubkey, ciphertext);
+}
+
+/**
  * Pays a Lightning invoice through a connected wallet via NIP-47.
  * Resolves with { preimage } on success, throws on failure or timeout.
  */
@@ -51,18 +92,22 @@ export async function payInvoiceViaNwc(nwcUri, invoice, { timeoutMs = 30000 } = 
   const clientSecretKey = hexToBytes(secret);
   const clientPubkey = getPublicKey(clientSecretKey);
 
+  const pool = getPool();
+  const scheme = await negotiateEncryption(pool, relays, walletPubkey);
+
   const requestContent = JSON.stringify({ method: "pay_invoice", params: { invoice } });
-  const encryptedContent = await nip04Encrypt(clientSecretKey, walletPubkey, requestContent);
+  const encryptedContent = await encryptFor(scheme, clientSecretKey, walletPubkey, requestContent);
 
   const requestTemplate = {
     kind: 23194,
     created_at: Math.floor(Date.now() / 1000),
-    tags: [["p", walletPubkey]],
+    tags: [
+      ["p", walletPubkey],
+      ["encryption", scheme],
+    ],
     content: encryptedContent,
   };
   const signedRequest = finalizeEvent(requestTemplate, clientSecretKey);
-
-  const pool = getPool();
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -81,7 +126,7 @@ export async function payInvoiceViaNwc(nwcUri, invoice, { timeoutMs = 30000 } = 
         onevent: async (event) => {
           if (settled) return;
           try {
-            const decrypted = await nip04Decrypt(clientSecretKey, walletPubkey, event.content);
+            const decrypted = await decryptFor(scheme, clientSecretKey, walletPubkey, event.content);
             const response = JSON.parse(decrypted);
             settled = true;
             clearTimeout(timeout);

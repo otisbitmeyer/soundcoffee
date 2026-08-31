@@ -80,7 +80,7 @@ export default function Header() {
             </button>
           </div>
 
-          <CartButton className="relative mr-1 font-display text-sm tracking-widest text-ink hover:text-rust" />
+          <CartButton className="relative mr-1 text-ink hover:text-rust" />
 
           {restoring ? (
             <div className="h-9 w-24" />
