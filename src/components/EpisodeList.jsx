@@ -40,16 +40,33 @@ function formatChapterTime(seconds) {
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${mm}:${ss}`;
 }
 
+// Show notes from RSS commonly carry HTML markup (paragraphs, links) —
+// stripped to plain text here rather than rendered as HTML, which
+// avoids any injection risk entirely rather than needing to sanitize it.
+function stripHtml(html) {
+  if (!html) return "";
+  return html
+    .replace(/<(p|br|div|li)[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function EpisodeCard({ episode }) {
   const [playing, setPlaying] = useState(false);
-  const [commentsOpen, setCommentsOpen] = useState(false);
-  const [chaptersOpen, setChaptersOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState(null); // null | "notes" | "chapters" | "comments"
   const [publishing, setPublishing] = useState(false);
   const { data, loading, refresh } = useEpisodeZaps(episode.guid);
   const { noteId, loading: noteLoading, refresh: refreshNote } = useEpisodeNote(episode.guid);
   const { chapters, loading: chaptersLoading, load: loadChapters } = useChapters(episode.chaptersUrl);
   const { pubkey, signEvent } = useAuth();
   const isSoundCoffeeAccount = pubkey === SOUND_COFFEE_PUBKEY;
+
+  const showNotes = stripHtml(episode.description);
 
   const audioRef = useRef(null);
   const pendingSeekRef = useRef(null); // seconds to seek to once the audio element is ready
@@ -76,9 +93,9 @@ function EpisodeCard({ episode }) {
     }
   }
 
-  function toggleChapters() {
-    if (!chaptersOpen) loadChapters();
-    setChaptersOpen((o) => !o);
+  function selectTab(tab) {
+    if (tab === "chapters" && activeTab !== "chapters") loadChapters();
+    setActiveTab((current) => (current === tab ? null : tab));
   }
 
   async function handlePublishNote() {
@@ -148,45 +165,66 @@ function EpisodeCard({ episode }) {
       {episode.guid && (
         <>
           <div className="flex items-center justify-between border-t border-paper/20 px-6 py-3">
-            <div className="flex items-center gap-4">
-              <ZapButton
-                recipientPubkey={SOUND_COFFEE_PUBKEY}
-                label={`Zap: ${episode.title}`}
-                episodeGuid={episode.guid}
-                eventId={noteId || undefined}
-                onZapped={refresh}
-                className="font-display text-xs tracking-widest text-jade transition hover:text-paper"
-              >
-                ⚡ ZAP
-              </ZapButton>
-              {episode.chaptersUrl && (
-                <button
-                  onClick={toggleChapters}
-                  className="font-display text-xs tracking-widest text-paper/60 transition hover:text-jade"
-                >
-                  CHAPTERS {chaptersOpen ? "▲" : "▼"}
-                </button>
-              )}
+            <ZapButton
+              recipientPubkey={SOUND_COFFEE_PUBKEY}
+              label={`Zap: ${episode.title}`}
+              episodeGuid={episode.guid}
+              eventId={noteId || undefined}
+              onZapped={refresh}
+              className="font-display text-xs tracking-widest text-jade transition hover:text-paper"
+            >
+              ⚡ ZAP
+            </ZapButton>
+            {isSoundCoffeeAccount && !noteLoading && !noteId && (
               <button
-                onClick={() => setCommentsOpen((o) => !o)}
-                className="font-display text-xs tracking-widest text-paper/60 transition hover:text-jade"
+                onClick={handlePublishNote}
+                disabled={publishing}
+                title="Publishes a Nostr note for this episode so zap comments show up clearly in other clients"
+                className="font-display text-xs tracking-widest text-rust transition hover:text-paper disabled:opacity-50"
               >
-                ZAPS AND CONVERSATION {commentsOpen ? "▲" : "▼"}
+                {publishing ? "PUBLISHING…" : "📝 PUBLISH NOTE"}
               </button>
-              {isSoundCoffeeAccount && !noteLoading && !noteId && (
-                <button
-                  onClick={handlePublishNote}
-                  disabled={publishing}
-                  title="Publishes a Nostr note for this episode so zap comments show up clearly in other clients"
-                  className="font-display text-xs tracking-widest text-rust transition hover:text-paper disabled:opacity-50"
-                >
-                  {publishing ? "PUBLISHING…" : "📝 PUBLISH NOTE"}
-                </button>
-              )}
-            </div>
+            )}
           </div>
 
-          {chaptersOpen && (
+          <div className="flex border-t border-paper/20">
+            {showNotes && (
+              <button
+                onClick={() => selectTab("notes")}
+                className={`flex-1 px-3 py-2.5 font-display text-[11px] tracking-widest transition ${
+                  activeTab === "notes" ? "bg-paper/10 text-jade" : "text-paper/50 hover:text-paper"
+                }`}
+              >
+                SHOW NOTES
+              </button>
+            )}
+            {episode.chaptersUrl && (
+              <button
+                onClick={() => selectTab("chapters")}
+                className={`flex-1 px-3 py-2.5 font-display text-[11px] tracking-widest transition ${
+                  activeTab === "chapters" ? "bg-paper/10 text-jade" : "text-paper/50 hover:text-paper"
+                }`}
+              >
+                CHAPTERS
+              </button>
+            )}
+            <button
+              onClick={() => selectTab("comments")}
+              className={`flex-1 px-3 py-2.5 font-display text-[11px] tracking-widest transition ${
+                activeTab === "comments" ? "bg-paper/10 text-jade" : "text-paper/50 hover:text-paper"
+              }`}
+            >
+              ZAPS &amp; COMMENTS
+            </button>
+          </div>
+
+          {activeTab === "notes" && (
+            <div className="border-t border-paper/20 px-6 py-4">
+              <p className="whitespace-pre-line font-serif text-sm text-paper/80">{showNotes}</p>
+            </div>
+          )}
+
+          {activeTab === "chapters" && (
             <div className="border-t border-paper/20 px-6 py-3">
               {chaptersLoading && (
                 <p className="font-serif text-xs text-paper/50">Loading chapters…</p>
@@ -216,7 +254,7 @@ function EpisodeCard({ episode }) {
             </div>
           )}
 
-          {commentsOpen && <EpisodeComments data={data} loading={loading} />}
+          {activeTab === "comments" && <EpisodeComments data={data} loading={loading} />}
         </>
       )}
     </div>
