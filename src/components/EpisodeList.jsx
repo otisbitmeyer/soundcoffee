@@ -56,7 +56,7 @@ function stripHtml(html) {
     .trim();
 }
 
-function EpisodeCard({ episode }) {
+function EpisodeCard({ episode, showImage }) {
   const [playing, setPlaying] = useState(false);
   const [activeTab, setActiveTab] = useState(null); // null | "notes" | "chapters" | "comments"
   const [publishing, setPublishing] = useState(false);
@@ -123,10 +123,10 @@ function EpisodeCard({ episode }) {
       <div className="p-6">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-4">
-            {episode.image && (
+            {(episode.image || showImage) && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={episode.image}
+                src={episode.image || showImage}
                 alt=""
                 className="h-16 w-16 shrink-0 border border-paper/30 object-cover"
               />
@@ -274,13 +274,13 @@ function EpisodeCard({ episode }) {
   );
 }
 
-export default function EpisodeList({ episodes, count }) {
+export default function EpisodeList({ episodes, count, showImage }) {
   const list = count ? episodes.slice(0, count) : episodes;
 
   return (
     <div className="grid gap-4">
       {list.map((ep, i) => (
-        <EpisodeCard key={ep.guid || i} episode={ep} />
+        <EpisodeCard key={ep.guid || i} episode={ep} showImage={showImage} />
       ))}
     </div>
   );

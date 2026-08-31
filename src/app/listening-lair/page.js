@@ -13,7 +13,7 @@ export default function ListeningLair() {
   // Just the one show for now — episodes go straight on this page
   // instead of behind a "pick a show" click-through. Easy to bring that
   // back if/when there's more than one show to choose between.
-  const { episodes } = usePodcastFeed(MAIN_FEED.url);
+  const { episodes, feedInfo } = usePodcastFeed(MAIN_FEED.url);
 
   return (
     <>
@@ -44,7 +44,7 @@ export default function ListeningLair() {
 
         <div className="mx-auto max-w-4xl px-6 py-16">
           {episodes ? (
-            <EpisodeList episodes={episodes} />
+            <EpisodeList episodes={episodes} showImage={feedInfo?.image} />
           ) : (
             <p className="text-center font-serif text-paper/50">Loading episodes…</p>
           )}
