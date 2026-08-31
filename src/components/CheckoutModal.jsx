@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import QRCode from "qrcode";
 import { SimplePool } from "nostr-tools/pool";
 import { useAuth } from "@/context/AuthContext";
@@ -11,6 +11,7 @@ import { resolveLud16, requestPlainInvoice } from "@/lib/zap";
 import { giftWrapForBoth } from "@/lib/nip17";
 import { DEFAULT_RELAYS, getDmRelaysFor } from "@/lib/relays";
 import { useBtcUsdPrice, usdToSats } from "@/hooks/useBtcUsdPrice";
+import { fetchShippingOption } from "@/hooks/useShippingOption";
 import { formatDualPrice } from "@/lib/formatPrice";
 import LoginModal from "./LoginModal";
 import WalletConnectPay from "./WalletConnectPay";
@@ -84,6 +85,49 @@ export default function CheckoutModal({ onClose }) {
   const [orderId, setOrderId] = useState(null);
   const [brantaLink, setBrantaLink] = useState(null);
   const [guestNsec, setGuestNsec] = useState(null);
+  // Coordinate -> resolved { amount, currency } for items that only
+  // have a shippingOptionCoords reference (published through /sell)
+  // rather than an inline shippingCost (what Conduit-style listings
+  // carry). Previously these were silently skipped entirely in cart
+  // checkout — this is what actually resolves them.
+  const [resolvedShipping, setResolvedShipping] = useState({});
+
+  useEffect(() => {
+    const needsResolving = cartItems.filter(
+      (i) => i.format === "physical" && !i.shippingCost && i.shippingOptionCoords?.[0]
+    );
+    if (needsResolving.length === 0) return;
+
+    let cancelled = false;
+    Promise.all(
+      needsResolving.map(async (i) => {
+        try {
+          const option = await fetchShippingOption(i.shippingOptionCoords[0]);
+          return [i.coordinate, option?.price || null];
+        } catch {
+          return [i.coordinate, null];
+        }
+      })
+    ).then((results) => {
+      if (cancelled) return;
+      setResolvedShipping((prev) => ({ ...prev, ...Object.fromEntries(results) }));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+    // Re-run when the cart's actual contents change, not on every
+    // render — comparing coordinates is enough, quantities don't
+    // affect which shipping options need resolving.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartItems.map((i) => i.coordinate).join(",")]);
+
+  // The effective shipping cost for an item — its own inline cost if
+  // it has one, otherwise whatever we've resolved via relay, if
+  // anything (may still be null while that fetch is in flight).
+  function effectiveShippingCost(item) {
+    return item.shippingCost || resolvedShipping[item.coordinate] || null;
+  }
 
   // A React state check alone isn't fast enough to stop a very quick
   // double-click — the button doesn't actually disable until after a
@@ -108,22 +152,23 @@ export default function CheckoutModal({ onClose }) {
 
   // Shipping: the highest single physical item's shipping cost, rest
   // free — simplest reasonable default for a combined-cart order.
-  // Known limitation: only accounts for items with an inline
-  // shippingCost (what our own listings and Conduit's both use) — an
-  // item that only has shippingOptionCoords (needs a relay fetch) isn't
-  // counted here, so its shipping wouldn't be reflected in this total.
+  // Covers both conventions — an inline shippingCost (what Conduit
+  // publishes) and a shippingOptionCoords reference resolved above
+  // (what our own /sell page publishes) — previously only the first
+  // was counted here at all, silently dropping shipping for anything
+  // listed through our own site.
   const physicalItemsWithShipping = cartItems.filter(
-    (i) => i.format === "physical" && i.shippingCost
+    (i) => i.format === "physical" && effectiveShippingCost(i)
   );
   const shippingSatsCandidates = physicalItemsWithShipping
-    .map((i) => priceToSats(i.shippingCost, btcUsdPrice))
-    .filter((s) => s != null);
+    .map((i) => priceToSats(effectiveShippingCost(i), btcUsdPrice))
+    .filter((s) => Number.isFinite(s));
   const shippingSats = shippingSatsCandidates.length > 0 ? Math.max(...shippingSatsCandidates) : 0;
   const shippingItem = physicalItemsWithShipping.find(
-    (i) => priceToSats(i.shippingCost, btcUsdPrice) === shippingSats
+    (i) => priceToSats(effectiveShippingCost(i), btcUsdPrice) === shippingSats
   );
   const shippingUsdCents = shippingItem
-    ? priceToUsdCents(shippingItem.shippingCost, shippingSats, btcUsdPrice)
+    ? priceToUsdCents(effectiveShippingCost(shippingItem), shippingSats, btcUsdPrice)
     : 0;
 
   const requiresShipping = cartItems.some((i) => i.format === "physical");

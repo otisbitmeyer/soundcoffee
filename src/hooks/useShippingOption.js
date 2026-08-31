@@ -31,6 +31,22 @@ function parseShippingOption(event) {
 
 /**
  * Fetches a single Gamma Markets shipping option (kind 30406) by its
+ * coordinate string, e.g. "30406:<pubkey>:<d-tag>". Plain async
+ * function, not a hook — usable in a loop for resolving several items
+ * at once, which a hook can't do.
+ */
+export async function fetchShippingOption(coordinate) {
+  const [, pubkey, dTag] = coordinate.split(":");
+  const event = await getPool().get(SHIPPING_SEARCH_RELAYS, {
+    kinds: [30406],
+    authors: [pubkey],
+    "#d": [dTag],
+  });
+  return event ? parseShippingOption(event) : null;
+}
+
+/**
+ * Fetches a single Gamma Markets shipping option (kind 30406) by its
  * coordinate string, e.g. "30406:<pubkey>:<d-tag>".
  */
 export function useShippingOption(coordinate) {
@@ -43,15 +59,12 @@ export function useShippingOption(coordinate) {
       setLoading(false);
       return;
     }
-    const [, pubkey, dTag] = coordinate.split(":");
     let cancelled = false;
     setLoading(true);
 
-    getPool()
-      .get(SHIPPING_SEARCH_RELAYS, { kinds: [30406], authors: [pubkey], "#d": [dTag] })
-      .then((event) => {
-        if (cancelled) return;
-        setOption(event ? parseShippingOption(event) : null);
+    fetchShippingOption(coordinate)
+      .then((option) => {
+        if (!cancelled) setOption(option);
       })
       .catch(() => {
         if (!cancelled) setOption(null);
