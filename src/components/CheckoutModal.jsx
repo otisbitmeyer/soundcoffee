@@ -501,7 +501,7 @@ export default function CheckoutModal({ onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/80 px-4 py-8"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-ink/80 px-4 py-8"
       onClick={(e) => e.target === e.currentTarget && onClose?.()}
     >
       <div className="flex max-h-[90vh] w-full max-w-md flex-col border-2 border-ink bg-paper">
