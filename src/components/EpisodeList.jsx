@@ -121,7 +121,7 @@ function EpisodeCard({ episode }) {
   return (
     <div className="border-2 border-paper/30 transition hover:border-jade">
       <div className="p-6">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-start justify-between gap-4">
           <div>
             <span className="font-display text-sm tracking-widest text-jade">
               {formatDate(episode.pubDate)}
@@ -129,23 +129,49 @@ function EpisodeCard({ episode }) {
             <h3 className="mt-2 font-display text-xl">{episode.title}</h3>
           </div>
 
-          {episode.audioUrl ? (
-            <button
-              onClick={() => setPlaying((p) => !p)}
-              className="shrink-0 border-2 border-paper/50 px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:border-jade hover:text-jade"
-            >
-              {playing ? "CLOSE" : "PLAY ▸"}
-            </button>
-          ) : (
-            <a
-              href={episode.link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 font-display text-sm tracking-widest text-paper/50 hover:text-jade"
-            >
-              LISTEN &rarr;
-            </a>
-          )}
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            {episode.audioUrl ? (
+              <button
+                onClick={() => setPlaying((p) => !p)}
+                className="border-2 border-paper/50 px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:border-jade hover:text-jade"
+              >
+                {playing ? "CLOSE" : "PLAY ▸"}
+              </button>
+            ) : (
+              <a
+                href={episode.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-display text-sm tracking-widest text-paper/50 hover:text-jade"
+              >
+                LISTEN &rarr;
+              </a>
+            )}
+
+            {episode.guid && (
+              <ZapButton
+                recipientPubkey={SOUND_COFFEE_PUBKEY}
+                label={`Zap: ${episode.title}`}
+                episodeGuid={episode.guid}
+                eventId={noteId || undefined}
+                onZapped={refresh}
+                className="font-display text-xs tracking-widest text-jade transition hover:text-paper"
+              >
+                ⚡ ZAP
+              </ZapButton>
+            )}
+
+            {episode.guid && isSoundCoffeeAccount && !noteLoading && !noteId && (
+              <button
+                onClick={handlePublishNote}
+                disabled={publishing}
+                title="Publishes a Nostr note for this episode so zap comments show up clearly in other clients"
+                className="font-display text-xs tracking-widest text-rust transition hover:text-paper disabled:opacity-50"
+              >
+                {publishing ? "PUBLISHING…" : "📝 PUBLISH NOTE"}
+              </button>
+            )}
+          </div>
         </div>
 
         {playing && episode.audioUrl && (
@@ -164,29 +190,6 @@ function EpisodeCard({ episode }) {
 
       {episode.guid && (
         <>
-          <div className="flex items-center justify-between border-t border-paper/20 px-6 py-3">
-            <ZapButton
-              recipientPubkey={SOUND_COFFEE_PUBKEY}
-              label={`Zap: ${episode.title}`}
-              episodeGuid={episode.guid}
-              eventId={noteId || undefined}
-              onZapped={refresh}
-              className="font-display text-xs tracking-widest text-jade transition hover:text-paper"
-            >
-              ⚡ ZAP
-            </ZapButton>
-            {isSoundCoffeeAccount && !noteLoading && !noteId && (
-              <button
-                onClick={handlePublishNote}
-                disabled={publishing}
-                title="Publishes a Nostr note for this episode so zap comments show up clearly in other clients"
-                className="font-display text-xs tracking-widest text-rust transition hover:text-paper disabled:opacity-50"
-              >
-                {publishing ? "PUBLISHING…" : "📝 PUBLISH NOTE"}
-              </button>
-            )}
-          </div>
-
           <div className="flex border-t border-paper/20">
             {showNotes && (
               <button
@@ -220,7 +223,7 @@ function EpisodeCard({ episode }) {
 
           {activeTab === "notes" && (
             <div className="border-t border-paper/20 px-6 py-4">
-              <p className="whitespace-pre-line font-serif text-sm text-paper/80">{showNotes}</p>
+              <p className="whitespace-pre-line break-words font-serif text-sm text-paper/80">{showNotes}</p>
             </div>
           )}
 
@@ -265,7 +268,7 @@ export default function EpisodeList({ episodes, count }) {
   const list = count ? episodes.slice(0, count) : episodes;
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-4">
       {list.map((ep, i) => (
         <EpisodeCard key={ep.guid || i} episode={ep} />
       ))}
