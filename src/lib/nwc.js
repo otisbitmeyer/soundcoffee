@@ -54,11 +54,16 @@ function getPool() {
  * Checks the wallet's own info event (kind 13194) for which encryption
  * schemes it supports, and picks the best one. Defaults to nip04 if we
  * can't find an info event at all — that's what the spec says the
- * absence of the tag implies.
+ * absence of the tag implies. Time-boxed short and separately from the
+ * main payment timeout — this shouldn't be able to eat into the budget
+ * for the actual payment request/response.
  */
 async function negotiateEncryption(pool, relays, walletPubkey) {
   try {
-    const infoEvent = await pool.get(relays, { kinds: [13194], authors: [walletPubkey] });
+    const infoEvent = await Promise.race([
+      pool.get(relays, { kinds: [13194], authors: [walletPubkey] }),
+      new Promise((resolve) => setTimeout(() => resolve(null), 5000)),
+    ]);
     const encryptionTag = infoEvent?.tags?.find((t) => t[0] === "encryption");
     const supported = encryptionTag?.[1]?.split(" ") || [];
     return supported.includes("nip44_v2") ? "nip44_v2" : "nip04";
@@ -121,7 +126,13 @@ export async function payInvoiceViaNwc(nwcUri, invoice, { timeoutMs = 30000 } = 
 
     const sub = pool.subscribeMany(
       relays,
-      [{ kinds: [23195], "#e": [signedRequest.id], "#p": [clientPubkey] }],
+      // Matching on kind + recipient alone, not also requiring the e
+      // tag — the spec says a response "SHOULD" include one, not
+      // "MUST", so a wallet that omits it would otherwise be
+      // invisible to us entirely. Successful decryption below is what
+      // actually confirms this is the real response, not the tag
+      // match itself.
+      [{ kinds: [23195], "#p": [clientPubkey] }],
       {
         onevent: async (event) => {
           if (settled) return;
