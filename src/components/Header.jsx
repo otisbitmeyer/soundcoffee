@@ -80,74 +80,76 @@ export default function Header() {
             </button>
           </div>
 
-          <CartButton className="relative mr-1 text-ink hover:text-rust" />
+          <div className="flex items-center gap-3">
+            <CartButton className="relative text-ink hover:text-rust" />
 
-          {restoring ? (
-            <div className="h-9 w-24" />
-          ) : isLoggedIn ? (
-            <div ref={menuRef} className="relative">
+            {restoring ? (
+              <div className="h-9 w-24" />
+            ) : isLoggedIn ? (
+              <div ref={menuRef} className="relative">
+                <button
+                  onClick={() => setMenuOpen((o) => !o)}
+                  className="flex items-center gap-2 border-2 border-ink px-3 py-2 font-display text-sm tracking-widest text-ink transition hover:border-jade hover:text-jade"
+                >
+                  {profile?.picture ? (
+                    <img
+                      src={profile.picture}
+                      alt=""
+                      className="h-6 w-6 rounded-full border border-ink object-cover"
+                    />
+                  ) : null}
+                  {displayName}
+                  <span className="text-xs">{menuOpen ? "▲" : "▼"}</span>
+                </button>
+
+                {menuOpen && (
+                  <div className="absolute right-0 mt-2 w-48 border-2 border-ink bg-paper font-display text-sm tracking-widest shadow-lg">
+                    {isSoundCoffeeAccount && (
+                      <>
+                        <Link
+                          href="/sell"
+                          onClick={() => setMenuOpen(false)}
+                          className="block px-4 py-3 text-ink hover:bg-ink hover:text-paper"
+                        >
+                          LISTINGS
+                        </Link>
+                        <Link
+                          href="/admin/orders"
+                          onClick={() => setMenuOpen(false)}
+                          className="block border-t border-ink/10 px-4 py-3 text-ink hover:bg-ink hover:text-paper"
+                        >
+                          ORDERS
+                        </Link>
+                        <Link
+                          href="/admin"
+                          onClick={() => setMenuOpen(false)}
+                          className="block border-t border-ink/10 px-4 py-3 text-ink hover:bg-ink hover:text-paper"
+                        >
+                          MERCHANT SETTINGS
+                        </Link>
+                      </>
+                    )}
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false);
+                        logout();
+                      }}
+                      className="block w-full border-t border-ink/10 px-4 py-3 text-left text-rust hover:bg-rust hover:text-paper"
+                    >
+                      LOG OUT
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
               <button
-                onClick={() => setMenuOpen((o) => !o)}
-                className="flex items-center gap-2 border-2 border-ink px-3 py-2 font-display text-sm tracking-widest text-ink transition hover:border-jade hover:text-jade"
+                onClick={() => setModalOpen(true)}
+                className="border-2 border-ink bg-ink px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust"
               >
-                {profile?.picture ? (
-                  <img
-                    src={profile.picture}
-                    alt=""
-                    className="h-6 w-6 rounded-full border border-ink object-cover"
-                  />
-                ) : null}
-                {displayName}
-                <span className="text-xs">{menuOpen ? "▲" : "▼"}</span>
+                LOG IN
               </button>
-
-              {menuOpen && (
-                <div className="absolute right-0 mt-2 w-48 border-2 border-ink bg-paper font-display text-sm tracking-widest shadow-lg">
-                  {isSoundCoffeeAccount && (
-                    <>
-                      <Link
-                        href="/sell"
-                        onClick={() => setMenuOpen(false)}
-                        className="block px-4 py-3 text-ink hover:bg-ink hover:text-paper"
-                      >
-                        LISTINGS
-                      </Link>
-                      <Link
-                        href="/admin/orders"
-                        onClick={() => setMenuOpen(false)}
-                        className="block border-t border-ink/10 px-4 py-3 text-ink hover:bg-ink hover:text-paper"
-                      >
-                        ORDERS
-                      </Link>
-                      <Link
-                        href="/admin"
-                        onClick={() => setMenuOpen(false)}
-                        className="block border-t border-ink/10 px-4 py-3 text-ink hover:bg-ink hover:text-paper"
-                      >
-                        MERCHANT SETTINGS
-                      </Link>
-                    </>
-                  )}
-                  <button
-                    onClick={() => {
-                      setMenuOpen(false);
-                      logout();
-                    }}
-                    className="block w-full border-t border-ink/10 px-4 py-3 text-left text-rust hover:bg-rust hover:text-paper"
-                  >
-                    LOG OUT
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <button
-              onClick={() => setModalOpen(true)}
-              className="border-2 border-ink bg-ink px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust"
-            >
-              LOG IN
-            </button>
-          )}
+            )}
+          </div>
         </div>
 
         {mobileNavOpen && (
