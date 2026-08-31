@@ -18,13 +18,6 @@ function getPublishPool() {
   return publishPool;
 }
 
-function formatSatsCompact(sats) {
-  if (sats >= 1000) {
-    return `${(sats / 1000).toFixed(1)}k sats`;
-  }
-  return `${sats.toLocaleString()} sats`;
-}
-
 function formatDate(dateString) {
   try {
     return new Date(dateString).toLocaleDateString(undefined, {
@@ -166,12 +159,6 @@ function EpisodeCard({ episode }) {
               >
                 ⚡ ZAP
               </ZapButton>
-              <button
-                onClick={() => setCommentsOpen((o) => !o)}
-                className="font-display text-xs tracking-widest text-paper/60 transition hover:text-jade"
-              >
-                ZAPS AND CONVERSATION {commentsOpen ? "▲" : "▼"}
-              </button>
               {episode.chaptersUrl && (
                 <button
                   onClick={toggleChapters}
@@ -180,6 +167,12 @@ function EpisodeCard({ episode }) {
                   CHAPTERS {chaptersOpen ? "▲" : "▼"}
                 </button>
               )}
+              <button
+                onClick={() => setCommentsOpen((o) => !o)}
+                className="font-display text-xs tracking-widest text-paper/60 transition hover:text-jade"
+              >
+                ZAPS AND CONVERSATION {commentsOpen ? "▲" : "▼"}
+              </button>
               {isSoundCoffeeAccount && !noteLoading && !noteId && (
                 <button
                   onClick={handlePublishNote}
@@ -191,16 +184,7 @@ function EpisodeCard({ episode }) {
                 </button>
               )}
             </div>
-
-            {!loading && data && data.count > 0 && (
-              <span className="font-serif text-xs text-paper/50">
-                {data.count} zap{data.count === 1 ? "" : "s"} ·{" "}
-                {formatSatsCompact(data.totalSats)}
-              </span>
-            )}
           </div>
-
-          {commentsOpen && <EpisodeComments data={data} loading={loading} />}
 
           {chaptersOpen && (
             <div className="border-t border-paper/20 px-6 py-3">
@@ -231,6 +215,8 @@ function EpisodeCard({ episode }) {
               )}
             </div>
           )}
+
+          {commentsOpen && <EpisodeComments data={data} loading={loading} />}
         </>
       )}
     </div>
