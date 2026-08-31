@@ -1134,6 +1134,59 @@ async function handlePodcastChapters(request, env) {
  * checking a separate dashboard. Reports precisely which secret (if
  * any) is missing, or the exact error Resend itself returned.
  */
+/**
+ * Direct diagnostic for Stripe config — same reasoning as the email
+ * one above. Detects test vs live mode directly from the key's own
+ * prefix (no guessing needed), and makes one safe, read-only API call
+ * to confirm the key actually works, without touching anything.
+ */
+async function handleTestStripeConfig(env) {
+  const diag = {
+    stripeSecretKeyPresent: !!env.STRIPE_SECRET_KEY,
+    stripeSecretKeyMode: env.STRIPE_SECRET_KEY?.startsWith("sk_live_")
+      ? "LIVE"
+      : env.STRIPE_SECRET_KEY?.startsWith("sk_test_")
+      ? "TEST"
+      : env.STRIPE_SECRET_KEY
+      ? "UNRECOGNIZED FORMAT"
+      : null,
+    stripeWebhookSecretPresent: !!env.STRIPE_WEBHOOK_SECRET,
+  };
+
+  if (!env.STRIPE_SECRET_KEY) {
+    return jsonResponse({
+      ...diag,
+      result: "FAILED — STRIPE_SECRET_KEY is not visible to this Worker at runtime.",
+    });
+  }
+  if (!env.STRIPE_WEBHOOK_SECRET) {
+    return jsonResponse({
+      ...diag,
+      result: "PARTIAL — secret key is visible, but STRIPE_WEBHOOK_SECRET is missing. Checkout could work, but payment confirmations never will without this.",
+    });
+  }
+
+  try {
+    const res = await fetch("https://api.stripe.com/v1/account", {
+      headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      return jsonResponse({
+        ...diag,
+        result: `FAILED — Stripe rejected this key: ${res.status} ${body.slice(0, 200)}`,
+      });
+    }
+    const account = await res.json();
+    return jsonResponse({
+      ...diag,
+      result: `SUCCESS — key is valid and working, in ${diag.stripeSecretKeyMode} mode. Account: ${account.id}, charges enabled: ${account.charges_enabled}.`,
+    });
+  } catch (e) {
+    return jsonResponse({ ...diag, result: `FAILED — couldn't reach Stripe: ${e.message}` });
+  }
+}
+
 async function handleTestEmail(env) {
   const diag = {
     resendApiKeyPresent: !!env.RESEND_API_KEY,
@@ -1317,6 +1370,9 @@ async function handleFetch(request, env) {
   }
   if (request.method === "GET" && url.pathname === "/api/test-email") {
     return handleTestEmail(env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/test-stripe-config") {
+    return handleTestStripeConfig(env);
   }
   if (request.method === "GET" && url.pathname === "/api/diagnose-episode-zaps") {
     return handleDiagnoseEpisodeZaps(env);
