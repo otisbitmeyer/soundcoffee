@@ -14,6 +14,19 @@ function shortNpub(npub) {
   return `${npub.slice(0, 10)}…${npub.slice(-4)}`;
 }
 
+// Next.js's <Link> to a hash anchor doesn't reliably re-scroll when
+// already on the target page — clicking SHOP while already on the
+// homepage would just silently do nothing. Scroll directly when
+// already there; let normal navigation handle it otherwise (landing
+// fresh on the homepage with the hash in the URL scrolls correctly on
+// its own).
+function scrollToShop(e) {
+  if (window.location.pathname === "/") {
+    e.preventDefault();
+    document.getElementById("shop")?.scrollIntoView({ behavior: "smooth" });
+  }
+}
+
 export default function Header() {
   const { isLoggedIn, pubkey, npub, logout, restoring } = useAuth();
   const { profile } = useProfile(pubkey);
@@ -51,7 +64,7 @@ export default function Header() {
           </Link>
 
           <nav className="hidden items-center gap-8 font-display text-sm tracking-widest text-ink sm:flex">
-            <Link href="/#shop" className="hover:text-rust">SHOP</Link>
+            <Link href="/#shop" onClick={scrollToShop} className="hover:text-rust">SHOP</Link>
             <Link href="/listening-lair" className="hover:text-rust">LISTEN</Link>
           </nav>
 
@@ -141,7 +154,10 @@ export default function Header() {
           <nav className="flex flex-col border-t-2 border-ink font-display text-sm tracking-widest text-ink sm:hidden">
             <Link
               href="/#shop"
-              onClick={() => setMobileNavOpen(false)}
+              onClick={(e) => {
+                setMobileNavOpen(false);
+                scrollToShop(e);
+              }}
               className="border-b border-ink/10 px-6 py-3 hover:bg-ink hover:text-paper"
             >
               SHOP

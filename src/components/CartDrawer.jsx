@@ -36,10 +36,9 @@ export default function CartDrawer() {
   const { btcUsdPrice } = useBtcUsdPrice();
   const [checkoutOpen, setCheckoutOpen] = useState(false);
 
-  if (!drawerOpen) return null;
-
   return (
     <>
+      {drawerOpen && (
       <div className="fixed inset-0 z-[110] flex justify-end bg-ink/60">
         <div className="flex h-full w-full max-w-sm flex-col border-l-2 border-ink bg-paper">
           <div className="flex items-center justify-between border-b-2 border-ink px-5 py-4">
@@ -47,7 +46,7 @@ export default function CartDrawer() {
             <button
               onClick={() => setDrawerOpen(false)}
               aria-label="Close cart"
-              className="font-display text-2xl leading-none text-ink hover:text-rust"
+              className="font-display text-4xl leading-none text-ink hover:text-rust"
             >
               &times;
             </button>
@@ -78,14 +77,14 @@ export default function CartDrawer() {
                       <div className="mt-1.5 flex items-center gap-2">
                         <button
                           onClick={() => updateQuantity(item.coordinate, item.quantity - 1)}
-                          className="border border-ink/30 px-2 font-display text-xs text-ink hover:border-ink"
+                          className="border border-ink/30 px-[14px] py-1 font-display text-[21px] text-ink hover:border-ink"
                         >
                           −
                         </button>
                         <span className="font-serif text-sm text-ink">{item.quantity}</span>
                         <button
                           onClick={() => updateQuantity(item.coordinate, item.quantity + 1)}
-                          className="border border-ink/30 px-2 font-display text-xs text-ink hover:border-ink"
+                          className="border border-ink/30 px-[14px] py-1 font-display text-[21px] text-ink hover:border-ink"
                         >
                           +
                         </button>
@@ -106,7 +105,10 @@ export default function CartDrawer() {
           {items.length > 0 && (
             <div className="border-t-2 border-ink px-5 py-4">
               <button
-                onClick={() => setCheckoutOpen(true)}
+                onClick={() => {
+                  setCheckoutOpen(true);
+                  setDrawerOpen(false);
+                }}
                 className="w-full border-2 border-ink bg-ink px-4 py-3 font-display text-sm tracking-widest text-paper hover:bg-rust hover:border-rust"
               >
                 CHECKOUT
@@ -115,6 +117,7 @@ export default function CartDrawer() {
           )}
         </div>
       </div>
+      )}
 
       {checkoutOpen && (
         <CheckoutModal

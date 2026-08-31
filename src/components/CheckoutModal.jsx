@@ -467,7 +467,7 @@ export default function CheckoutModal({ onClose }) {
           <button
             onClick={onClose}
             aria-label="Close"
-            className="font-display text-2xl leading-none text-ink hover:text-rust"
+            className="font-display text-4xl leading-none text-ink hover:text-rust"
           >
             &times;
           </button>
