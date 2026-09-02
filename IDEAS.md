@@ -5,6 +5,55 @@ these up whenever it's actually time.
 
 ---
 
+## Zap-Split Radio Feed
+
+A continuous "radio" feed that streams podcast episodes back-to-back,
+with zaps received during playback automatically split with whichever
+podcast is currently airing. Zaps can also function as a live queueing
+signal for what plays next.
+
+**Structure**
+- Radio feed = a NIP-51-style curated list (kind 30001 or similar),
+  referencing episodes via `remoteItem` tags pointing at their event
+  ID + relay hint + original kind. No audio duplication — pure
+  playlist of pointers.
+- Each participating podcast keeps its own dedicated feed with its own
+  host-split, same as today.
+
+**Tracking "currently playing"**
+- A coordinator Worker (fits existing Cloudflare-first, D1-authoritative
+  pattern) tracks the queue and "now playing" pointer server-side.
+- Coordinator also publishes an ephemeral event (kind 20000–29999
+  range) announcing `["playing", "<episode-event-id>",
+  "<start-timestamp>"]` for Nostr-native discoverability by clients.
+
+**Zap routing**
+- Naive passthrough won't work — the coordinator needs to intercept
+  NIP-57 zap requests to the radio feed, look up current "now
+  playing," and construct the invoice with that episode's host-split
+  before it hits the LN backend.
+- Alternative (simpler, worse UX): fixed radio-level split +
+  post-hoc batch reconciliation against logged playback history.
+  Doesn't support live "vote for next" signal.
+
+**Zap-driven queueing (extension)**
+- Highest-zapped pending item in queue jumps to play next.
+- Needs a tag convention to disambiguate "zap = vote for queue" vs
+  default "zap = currently playing" — e.g. explicit
+  `["zap-intent", "vote"]` tag vs implicit playback-split behavior.
+
+**Open questions**
+- Clock skew/latency between actual audio playback and coordinator's
+  "now playing" state — risk of misattribution right at track
+  transitions.
+- Rate-limiting/debouncing queue-jump votes so one large zap can't
+  dominate the queue.
+- Multi-relay consistency for the ephemeral "now playing" event if
+  listeners pull from different relays than the coordinator publishes
+  to.
+
+---
+
 ## Autonomous order detection (Conduit/external orders while offline)
 
 Right now, detecting orders from other apps (Conduit, etc.) — and the
