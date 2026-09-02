@@ -10,47 +10,84 @@ these up whenever it's actually time.
 A continuous "radio" feed that streams podcast episodes back-to-back,
 with zaps received during playback automatically split with whichever
 podcast is currently airing. Zaps can also function as a live queueing
-signal for what plays next.
+signal for what plays next. Playlist construction can be restricted to
+a defined community (e.g. Coffee Club members).
 
 **Structure**
-- Radio feed = a NIP-51-style curated list (kind 30001 or similar),
-  referencing episodes via `remoteItem` tags pointing at their event
-  ID + relay hint + original kind. No audio duplication — pure
-  playlist of pointers.
+- Radio feed = a playlist of pointers to episodes in their native
+  feeds, not duplicated content.
+- Two protocol options for the playlist substrate:
+  - Custom: our own `remoteItem`/`a`-tag convention, fully
+    self-controlled.
+  - Decentralized Lists NIP (draft, kind 9998/39998 headers +
+    9999/39999 items — found via research into `nostr-rss-lists`, an
+    nsite app for community-curated feed lists): generalizes NIP-51
+    so list items are community-contributed rather than author-only,
+    with approval/disapproval via ordinary NIP-25 reactions. A closer
+    conceptual fit for the queue since it's built for open
+    contribution + voting, but it's an unratified draft on a fork —
+    treat kind numbers as provisional.
 - Each participating podcast keeps its own dedicated feed with its own
   host-split, same as today.
 
 **Tracking "currently playing"**
-- A coordinator Worker (fits existing Cloudflare-first, D1-authoritative
-  pattern) tracks the queue and "now playing" pointer server-side.
-- Coordinator also publishes an ephemeral event (kind 20000–29999
-  range) announcing `["playing", "<episode-event-id>",
-  "<start-timestamp>"]` for Nostr-native discoverability by clients.
+- Coordinator Worker (fits existing Cloudflare/D1-authoritative
+  pattern) owns the queue and "now playing" pointer.
+- Coordinator also publishes an ephemeral event (kind 20000–29999)
+  announcing current playback for Nostr-native discoverability by
+  clients.
 
 **Zap routing**
-- Naive passthrough won't work — the coordinator needs to intercept
-  NIP-57 zap requests to the radio feed, look up current "now
-  playing," and construct the invoice with that episode's host-split
-  before it hits the LN backend.
+- Naive passthrough won't work — coordinator must intercept NIP-57
+  zap requests to the radio feed, look up current "now playing," and
+  construct the invoice with that episode's host-split before it hits
+  the LN backend. This is the hardest and most load-bearing piece —
+  worth prototyping/diagnostic-testing before building the queue
+  layer.
 - Alternative (simpler, worse UX): fixed radio-level split +
   post-hoc batch reconciliation against logged playback history.
-  Doesn't support live "vote for next" signal.
+  Doesn't support live "vote for next."
 
 **Zap-driven queueing (extension)**
-- Highest-zapped pending item in queue jumps to play next.
+- Highest-zapped pending item jumps the queue.
 - Needs a tag convention to disambiguate "zap = vote for queue" vs
-  default "zap = currently playing" — e.g. explicit
-  `["zap-intent", "vote"]` tag vs implicit playback-split behavior.
+  default "zap = currently playing" (e.g. `["zap-intent", "vote"]`),
+  or use NIP-25 reactions/zap-counts on Decentralized-List item events
+  if that route is chosen.
+
+**Restricting playlist construction to community members**
+- Not something either protocol enforces natively — the Decentralized
+  Lists NIP is explicitly agnostic about curation/spam prevention.
+  Enforcement is our responsibility, at one of three layers:
+  1. Relay-level allow-listing (only accept writes from member
+     pubkeys) — clean but requires running our own relay.
+  2. Coordinator-side filtering (recommended): coordinator checks
+     playlist-item author pubkeys against a membership list before
+     queuing, discarding non-member submissions. Same shape as
+     D1-is-authoritative for orders.
+  3. Tie membership check to existing Coffee Club membership data in
+     D1 — reuses infra rather than building separate access control.
+- Open decision to resolve before building: does "restricted" mean
+  only members can add tracks, or only members' zap-votes count
+  toward reordering (anyone can zap, but member-zaps move the queue)?
+  Different product decisions, same filtering mechanism.
+
+**Sequencing when this comes off the backlog**
+1. Coordinator + "now playing" state tracking
+2. Zap-split routing (prove this works before investing further)
+3. Membership-gated queue submission
+4. Zap-driven queue voting
 
 **Open questions**
 - Clock skew/latency between actual audio playback and coordinator's
-  "now playing" state — risk of misattribution right at track
-  transitions.
+  "now playing" state — risk of misattribution at track transitions.
 - Rate-limiting/debouncing queue-jump votes so one large zap can't
-  dominate the queue.
+  dominate.
 - Multi-relay consistency for the ephemeral "now playing" event if
   listeners pull from different relays than the coordinator publishes
   to.
+- Protocol choice (custom vs. Decentralized Lists NIP) needs deciding
+  before the coordinator's data model is built.
 
 ---
 
