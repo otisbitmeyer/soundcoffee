@@ -5,6 +5,51 @@ these up whenever it's actually time.
 
 ---
 
+## Sticky global audio player
+
+A persistent player at the top of the screen when someone's listening,
+instead of each episode owning its own inline player. Discussed and
+scoped, not started.
+
+**The real architectural shift:** audio state currently lives locally
+per episode card — each card owns its own `playing` state and its own
+`<audio>` element, totally independent of every other card. A global
+player means moving that to a shared context (same pattern as
+`CartContext`) at the root layout, so it survives navigation between
+pages. The existing inline players would need to go away entirely, not
+coexist — otherwise two audio elements could end up fighting for
+playback. That also means the chapter-seek logic (which currently
+reaches directly into a local `audioRef`) needs rewiring to go through
+the shared context instead — a real refactor, that logic is already
+fairly intricate.
+
+**Genuine challenges, not just "build a bar":**
+- Stacking with the existing sticky header — either two stacked bars
+  (pushing page content down dynamically only when something's
+  playing) or merging the player into the header itself. Already hit
+  real z-index bugs this project with just two overlapping elements;
+  needs deliberate layout planning, not an afterthought.
+- Mobile screen space is genuinely tight — most apps with persistent
+  players (Spotify included) put it at the *bottom* on mobile
+  specifically even when desktop uses the top. Worth deciding
+  deliberately per screen size rather than assuming "top" everywhere.
+- Honest, unavoidable limitation: only works within a single browser
+  session. Client-side navigation is fine, but an actual page reload
+  or leaving the site stops playback — that's just how browser audio
+  works, not fixable on our end.
+
+**Worth building alongside, not required but genuinely nice:** the
+Media Session API — real lock-screen/media-key controls with title and
+artwork. Meaningfully better on mobile, pairs naturally with the PWA
+work already done. Not required for a basic version, but the metadata
+plumbing is mostly already there once the global player exists, so
+cheaper to build together than bolt on later.
+
+**Scope read:** closer in size to the cart system than to a styling
+pass — a real architectural piece, worth its own dedicated session.
+
+---
+
 ## Zap-Split Radio Feed
 
 A continuous "radio" feed that streams podcast episodes back-to-back,
