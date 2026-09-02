@@ -120,12 +120,12 @@ function EpisodeCard({ episode, showImage }) {
   }
 
   return (
-    <div className="border-b border-paper/20 last:border-b-0">
+    <div>
       <button
         onClick={() => setExpanded((e) => !e)}
-        className="w-full px-6 py-5 text-center transition hover:bg-paper/5"
+        className="w-full px-6 py-5 text-center transition"
       >
-        <h3 className="font-display text-2xl tracking-wide text-paper transition hover:text-jade sm:text-3xl">
+        <h3 className="font-serif text-2xl tracking-wide text-paper transition hover:text-jade sm:text-3xl">
           {episode.title}
         </h3>
       </button>
@@ -299,7 +299,7 @@ export default function EpisodeList({ episodes, count, showImage }) {
   const list = count ? episodes.slice(0, count) : episodes;
 
   return (
-    <div className="border-2 border-paper/30">
+    <div className="space-y-2">
       {list.map((ep, i) => (
         <EpisodeCard key={ep.guid || i} episode={ep} showImage={showImage} />
       ))}
