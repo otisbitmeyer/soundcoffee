@@ -1,9 +1,5 @@
 import Image from "next/image";
-import Link from "next/link";
-import { Suspense } from "react";
 import Header from "@/components/Header";
-import PodcastEpisodes from "@/components/PodcastEpisodes";
-import ShopGrid from "@/components/ShopGrid";
 import PwaInstallButton from "@/components/PwaInstallButton";
 
 export default function Home() {
@@ -12,8 +8,8 @@ export default function Home() {
       <Header />
 
       <main className="flex-1">
-        {/* ---------- HERO ---------- */}
-        <section className="flex min-h-[90vh] items-center border-b-4 border-ink bg-ink text-paper">
+        {/* ---------- HERO / WELCOME ---------- */}
+        <section className="flex min-h-[90vh] items-center bg-ink text-paper">
           <div className="mx-auto max-w-2xl px-6 py-16 text-center">
             <Image
               src="/hero-greeting.png"
@@ -34,39 +30,12 @@ export default function Home() {
 
             <div className="mt-10">
               <a
-                href="#shop"
+                href="/shop"
                 className="inline-block border-2 border-paper px-6 py-3 font-display text-sm tracking-widest text-paper transition hover:border-jade hover:text-jade"
               >
-                SHOP THE COFFEE
+                BUY THE COFFEE
               </a>
             </div>
-          </div>
-        </section>
-
-        {/* ---------- SHOP ---------- */}
-        <section id="shop" className="border-b-4 border-ink bg-paper">
-          <div className="mx-auto max-w-6xl px-6 py-20 text-center">
-            <h2 className="font-display text-4xl tracking-wide text-ink sm:text-5xl">
-              SHOP
-            </h2>
-
-            <Suspense fallback={null}>
-              <ShopGrid />
-            </Suspense>
-          </div>
-        </section>
-
-        {/* ---------- LISTEN ---------- */}
-        <section id="listen" className="border-b-4 border-ink bg-ink text-paper">
-          <div className="mx-auto max-w-6xl px-6 py-20 text-center">
-            <h2 className="font-display text-4xl tracking-wide sm:text-5xl">
-              LISTEN
-            </h2>
-            <p className="mx-auto mt-4 max-w-2xl font-serif text-lg text-paper/80">
-              Conversations in the coffee shop. New edition most months.
-            </p>
-
-            <PodcastEpisodes />
           </div>
         </section>
       </main>

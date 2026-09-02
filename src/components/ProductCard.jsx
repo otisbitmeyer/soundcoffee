@@ -91,7 +91,7 @@ export default function ProductCard({ listing, sellerPubkey, allListings }) {
   const { addItem } = useCart();
 
   function handleShare() {
-    const url = `${window.location.origin}/?product=${encodeURIComponent(listing.dTag)}#shop`;
+    const url = `${window.location.origin}/shop?product=${encodeURIComponent(listing.dTag)}`;
     navigator.clipboard.writeText(url).then(() => {
       setJustShared(true);
       setTimeout(() => setJustShared(false), 1500);
