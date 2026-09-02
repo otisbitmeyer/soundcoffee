@@ -7,9 +7,15 @@ these up whenever it's actually time.
 
 ## Sticky global audio player
 
-A persistent player at the top of the screen when someone's listening,
-instead of each episode owning its own inline player. Discussed and
-scoped, not started.
+A persistent player at the bottom of the screen when someone's
+listening, instead of each episode owning its own inline player.
+Discussed and scoped, not started.
+
+**Decided: bottom placement**, not top — resolves the positioning
+question raised below. Matches the common pattern (Spotify included)
+and sidesteps the stacking conflict with the existing sticky header
+entirely, since there's nothing else anchored to the bottom of the
+page to collide with.
 
 **The real architectural shift:** audio state currently lives locally
 per episode card — each card owns its own `playing` state and its own
@@ -24,15 +30,9 @@ the shared context instead — a real refactor, that logic is already
 fairly intricate.
 
 **Genuine challenges, not just "build a bar":**
-- Stacking with the existing sticky header — either two stacked bars
-  (pushing page content down dynamically only when something's
-  playing) or merging the player into the header itself. Already hit
-  real z-index bugs this project with just two overlapping elements;
-  needs deliberate layout planning, not an afterthought.
-- Mobile screen space is genuinely tight — most apps with persistent
-  players (Spotify included) put it at the *bottom* on mobile
-  specifically even when desktop uses the top. Worth deciding
-  deliberately per screen size rather than assuming "top" everywhere.
+- Mobile screen space is still worth being deliberate about even at
+  the bottom — content needs bottom padding so the player doesn't
+  cover the last thing on the page.
 - Honest, unavoidable limitation: only works within a single browser
   session. Client-side navigation is fine, but an actual page reload
   or leaving the site stops playback — that's just how browser audio
