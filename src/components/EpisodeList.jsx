@@ -57,6 +57,7 @@ function stripHtml(html) {
 }
 
 function EpisodeCard({ episode, showImage }) {
+  const [expanded, setExpanded] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [activeTab, setActiveTab] = useState(null); // null | "notes" | "chapters" | "comments"
   const [publishing, setPublishing] = useState(false);
@@ -119,165 +120,177 @@ function EpisodeCard({ episode, showImage }) {
   }
 
   return (
-    <div className="border-2 border-paper/30 transition hover:border-jade">
-      <div className="p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-4">
-            {(episode.image || showImage) && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={episode.image || showImage}
-                alt=""
-                className="h-16 w-16 shrink-0 border border-paper/30 object-cover"
-              />
-            )}
-            <div>
+    <div className="border-b border-paper/20 last:border-b-0">
+      <button
+        onClick={() => setExpanded((e) => !e)}
+        className="w-full px-6 py-5 text-center transition hover:bg-paper/5"
+      >
+        <h3 className="font-display text-2xl tracking-wide text-paper transition hover:text-jade sm:text-3xl">
+          {episode.title}
+        </h3>
+      </button>
+
+      <div
+        className={`overflow-hidden transition-all duration-500 ease-in-out ${
+          expanded ? "max-h-[3000px] opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
+        <div className="border-t border-paper/10 p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-4">
+              {(episode.image || showImage) && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={episode.image || showImage}
+                  alt=""
+                  className="h-16 w-16 shrink-0 border border-paper/30 object-cover"
+                />
+              )}
               <span className="font-display text-sm tracking-widest text-jade">
                 {formatDate(episode.pubDate)}
               </span>
-              <h3 className="mt-2 font-display text-xl">{episode.title}</h3>
+            </div>
+
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              {episode.audioUrl ? (
+                <button
+                  onClick={() => setPlaying((p) => !p)}
+                  className="border-2 border-paper/50 px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:border-jade hover:text-jade"
+                >
+                  {playing ? "CLOSE" : "LISTEN ▸"}
+                </button>
+              ) : (
+                <a
+                  href={episode.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="border-2 border-paper/50 px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:border-jade hover:text-jade"
+                >
+                  LISTEN &rarr;
+                </a>
+              )}
+
+              {episode.guid && (
+                <ZapButton
+                  recipientPubkey={SOUND_COFFEE_PUBKEY}
+                  label={`Zap: ${episode.title}`}
+                  episodeGuid={episode.guid}
+                  eventId={noteId || undefined}
+                  onZapped={refresh}
+                  className="border-2 border-jade/60 px-4 py-2 font-display text-sm tracking-widest text-jade transition hover:border-jade hover:bg-jade hover:text-ink"
+                >
+                  ⚡ ZAP
+                </ZapButton>
+              )}
+
+              {episode.guid && isSoundCoffeeAccount && !noteLoading && !noteId && (
+                <button
+                  onClick={handlePublishNote}
+                  disabled={publishing}
+                  title="Publishes a Nostr note for this episode so zap comments show up clearly in other clients"
+                  className="font-display text-xs tracking-widest text-rust transition hover:text-paper disabled:opacity-50"
+                >
+                  {publishing ? "PUBLISHING…" : "📝 PUBLISH NOTE"}
+                </button>
+              )}
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-col items-end gap-2">
-            {episode.audioUrl ? (
-              <button
-                onClick={() => setPlaying((p) => !p)}
-                className="border-2 border-paper/50 px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:border-jade hover:text-jade"
-              >
-                {playing ? "CLOSE" : "LISTEN ▸"}
-              </button>
-            ) : (
-              <a
-                href={episode.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="border-2 border-paper/50 px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:border-jade hover:text-jade"
-              >
-                LISTEN &rarr;
-              </a>
-            )}
-
-            {episode.guid && (
-              <ZapButton
-                recipientPubkey={SOUND_COFFEE_PUBKEY}
-                label={`Zap: ${episode.title}`}
-                episodeGuid={episode.guid}
-                eventId={noteId || undefined}
-                onZapped={refresh}
-                className="border-2 border-jade/60 px-4 py-2 font-display text-sm tracking-widest text-jade transition hover:border-jade hover:bg-jade hover:text-ink"
-              >
-                ⚡ ZAP
-              </ZapButton>
-            )}
-
-            {episode.guid && isSoundCoffeeAccount && !noteLoading && !noteId && (
-              <button
-                onClick={handlePublishNote}
-                disabled={publishing}
-                title="Publishes a Nostr note for this episode so zap comments show up clearly in other clients"
-                className="font-display text-xs tracking-widest text-rust transition hover:text-paper disabled:opacity-50"
-              >
-                {publishing ? "PUBLISHING…" : "📝 PUBLISH NOTE"}
-              </button>
-            )}
-          </div>
+          {playing && episode.audioUrl && (
+            <audio
+              ref={audioRef}
+              controls
+              autoPlay
+              src={episode.audioUrl}
+              className="mt-4 w-full"
+            >
+              Your browser doesn&rsquo;t support inline audio.{" "}
+              <a href={episode.link}>Listen on the episode page instead.</a>
+            </audio>
+          )}
         </div>
 
-        {playing && episode.audioUrl && (
-          <audio
-            ref={audioRef}
-            controls
-            autoPlay
-            src={episode.audioUrl}
-            className="mt-4 w-full"
-          >
-            Your browser doesn&rsquo;t support inline audio.{" "}
-            <a href={episode.link}>Listen on the episode page instead.</a>
-          </audio>
+        {episode.guid && (
+          <>
+            <div className="flex border-t border-paper/20">
+              {showNotes && (
+                <button
+                  onClick={() => selectTab("notes")}
+                  className={`flex-1 px-3 py-2.5 font-display text-[11px] tracking-widest transition ${
+                    activeTab === "notes" ? "bg-paper/10 text-jade" : "text-paper/50 hover:text-paper"
+                  }`}
+                >
+                  SHOW NOTES
+                </button>
+              )}
+              {episode.chaptersUrl && (
+                <button
+                  onClick={() => selectTab("chapters")}
+                  className={`flex-1 px-3 py-2.5 font-display text-[11px] tracking-widest transition ${
+                    activeTab === "chapters" ? "bg-paper/10 text-jade" : "text-paper/50 hover:text-paper"
+                  }`}
+                >
+                  CHAPTERS
+                </button>
+              )}
+              <button
+                onClick={() => selectTab("comments")}
+                className={`flex-1 px-3 py-2.5 font-display text-[11px] tracking-widest transition ${
+                  activeTab === "comments" ? "bg-paper/10 text-jade" : "text-paper/50 hover:text-paper"
+                }`}
+              >
+                ZAPS &amp; COMMENTS
+              </button>
+            </div>
+
+            {activeTab === "notes" && (
+              <div className="border-t border-paper/20 px-6 py-4">
+                <p className="whitespace-pre-line break-words font-serif text-sm text-paper/80">{showNotes}</p>
+              </div>
+            )}
+
+            {activeTab === "chapters" && (
+              <div className="border-t border-paper/20 px-6 py-3">
+                {chaptersLoading && (
+                  <p className="font-serif text-xs text-paper/50">Loading chapters…</p>
+                )}
+                {!chaptersLoading && chapters?.length > 0 && (
+                  <ul className="space-y-2">
+                    {chapters.map((ch, i) => (
+                      <li key={i}>
+                        <button
+                          onClick={() => handleChapterClick(ch.startTime)}
+                          className="flex w-full items-center gap-3 text-left font-serif text-sm text-paper/80 hover:text-jade"
+                        >
+                          {ch.img && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={ch.img}
+                              alt=""
+                              className="h-10 w-10 shrink-0 border border-paper/20 object-cover"
+                            />
+                          )}
+                          <span className="shrink-0 font-mono text-xs text-jade/70">
+                            {formatChapterTime(ch.startTime)}
+                          </span>
+                          {ch.title}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {!chaptersLoading && chapters?.length === 0 && (
+                  <p className="font-serif text-xs italic text-paper/40">
+                    No chapters for this episode.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {activeTab === "comments" && <EpisodeComments data={data} loading={loading} />}
+          </>
         )}
       </div>
-
-      {episode.guid && (
-        <>
-          <div className="flex border-t border-paper/20">
-            {showNotes && (
-              <button
-                onClick={() => selectTab("notes")}
-                className={`flex-1 px-3 py-2.5 font-display text-[11px] tracking-widest transition ${
-                  activeTab === "notes" ? "bg-paper/10 text-jade" : "text-paper/50 hover:text-paper"
-                }`}
-              >
-                SHOW NOTES
-              </button>
-            )}
-            {episode.chaptersUrl && (
-              <button
-                onClick={() => selectTab("chapters")}
-                className={`flex-1 px-3 py-2.5 font-display text-[11px] tracking-widest transition ${
-                  activeTab === "chapters" ? "bg-paper/10 text-jade" : "text-paper/50 hover:text-paper"
-                }`}
-              >
-                CHAPTERS
-              </button>
-            )}
-            <button
-              onClick={() => selectTab("comments")}
-              className={`flex-1 px-3 py-2.5 font-display text-[11px] tracking-widest transition ${
-                activeTab === "comments" ? "bg-paper/10 text-jade" : "text-paper/50 hover:text-paper"
-              }`}
-            >
-              ZAPS &amp; COMMENTS
-            </button>
-          </div>
-
-          {activeTab === "notes" && (
-            <div className="border-t border-paper/20 px-6 py-4">
-              <p className="whitespace-pre-line break-words font-serif text-sm text-paper/80">{showNotes}</p>
-            </div>
-          )}
-
-          {activeTab === "chapters" && (
-            <div className="border-t border-paper/20 px-6 py-3">
-              {chaptersLoading && (
-                <p className="font-serif text-xs text-paper/50">Loading chapters…</p>
-              )}
-              {!chaptersLoading && chapters?.length > 0 && (
-                <ul className="space-y-2">
-                  {chapters.map((ch, i) => (
-                    <li key={i}>
-                      <button
-                        onClick={() => handleChapterClick(ch.startTime)}
-                        className="flex w-full items-center gap-3 text-left font-serif text-sm text-paper/80 hover:text-jade"
-                      >
-                        {ch.img && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={ch.img}
-                            alt=""
-                            className="h-10 w-10 shrink-0 border border-paper/20 object-cover"
-                          />
-                        )}
-                        <span className="shrink-0 font-mono text-xs text-jade/70">
-                          {formatChapterTime(ch.startTime)}
-                        </span>
-                        {ch.title}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {!chaptersLoading && chapters?.length === 0 && (
-                <p className="font-serif text-xs italic text-paper/40">
-                  No chapters for this episode.
-                </p>
-              )}
-            </div>
-          )}
-
-          {activeTab === "comments" && <EpisodeComments data={data} loading={loading} />}
-        </>
-      )}
     </div>
   );
 }
@@ -286,7 +299,7 @@ export default function EpisodeList({ episodes, count, showImage }) {
   const list = count ? episodes.slice(0, count) : episodes;
 
   return (
-    <div className="grid gap-4">
+    <div className="border-2 border-paper/30">
       {list.map((ep, i) => (
         <EpisodeCard key={ep.guid || i} episode={ep} showImage={showImage} />
       ))}
