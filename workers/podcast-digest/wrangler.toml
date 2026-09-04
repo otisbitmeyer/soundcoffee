@@ -1,0 +1,17 @@
+name = "nostr-podcast-digest"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Runs daily at 13:00 UTC (9am ET). Adjust to taste.
+[triggers]
+crons = ["0 13 * * *"]
+
+# Stores last-seen episode GUID per feed, keyed by feed URL.
+[[kv_namespaces]]
+binding = "DIGEST_KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+# Secrets (set these with `wrangler secret put <NAME>`, never in this file):
+#   BOT_NSEC          - hex or nsec private key for the bot's Nostr identity
+#   ANTHROPIC_API_KEY  - Claude API key for summarization
