@@ -5,48 +5,56 @@ these up whenever it's actually time.
 
 ---
 
-## Sticky global audio player
+## Sticky global audio player & basic radio queue
 
-A persistent player at the bottom of the screen when someone's
-listening, instead of each episode owning its own inline player.
-Discussed and scoped, not started.
+**Status: steps 1-3 built and live.** Global player context with
+queue support, sticky bottom player bar, and a `/radio` page for
+building a station by queuing episodes across feeds. Only the
+zap-split/multi-user layer (step 4, folds into the Zap-Split Radio
+Feed entry below) remains undone.
 
-**Decided: bottom placement**, not top — resolves the positioning
-question raised below. Matches the common pattern (Spotify included)
-and sidesteps the stacking conflict with the existing sticky header
-entirely, since there's nothing else anchored to the bottom of the
-page to collide with.
+**What's actually built:**
+- `PlayerContext` — shared audio state (queue, current track,
+  play/pause, seek) at the root layout, survives navigation between
+  pages. A single real `<audio>` element, not one per episode.
+- Bottom-positioned `PlayerBar` — shows current track, progress
+  (seekable), prev/next, only renders once something's actually
+  queued or playing.
+- `/radio` — queue builder, iterates `PODCAST_FEEDS` (already
+  structured for multiple feeds, even though only Sound Coffee's own
+  show is in it today) with a queue panel above.
+- Chapter-seek fully rewired through the shared context
+  (`seekToChapter`) instead of reaching into a local `audioRef` — the
+  refactor this was flagged as needing before it could happen.
+- Auto-advance to the next queued track on end, via a real explicit
+  `.play()` call synced to track changes — not relying solely on the
+  `autoPlay` HTML attribute, which browsers don't consistently honor
+  when a `src` changes on an already-mounted element rather than on
+  initial load.
 
-**The real architectural shift:** audio state currently lives locally
-per episode card — each card owns its own `playing` state and its own
-`<audio>` element, totally independent of every other card. A global
-player means moving that to a shared context (same pattern as
-`CartContext`) at the root layout, so it survives navigation between
-pages. The existing inline players would need to go away entirely, not
-coexist — otherwise two audio elements could end up fighting for
-playback. That also means the chapter-seek logic (which currently
-reaches directly into a local `audioRef`) needs rewiring to go through
-the shared context instead — a real refactor, that logic is already
-fairly intricate.
+**Deliberate design choice for step 4's sake:** every queued track
+carries its full identifying metadata (guid, title, feed source) —
+not just an audio URL. A future coordinator can reference and act on
+real tracks without this data model needing to change. The queue
+itself is purely local/client-side for now (localStorage, same
+pattern as the cart) — no server coordination, which is the correct
+scope boundary until multi-user shared queues actually become the
+goal.
 
-**Genuine challenges, not just "build a bar":**
-- Mobile screen space is still worth being deliberate about even at
-  the bottom — content needs bottom padding so the player doesn't
-  cover the last thing on the page.
-- Honest, unavoidable limitation: only works within a single browser
-  session. Client-side navigation is fine, but an actual page reload
-  or leaving the site stops playback — that's just how browser audio
-  works, not fixable on our end.
+**Honest, unavoidable limitation, unchanged:** only works within a
+single browser session. Client-side navigation is fine, an actual
+page reload or leaving the site stops playback — that's just how
+browser audio works.
 
-**Worth building alongside, not required but genuinely nice:** the
-Media Session API — real lock-screen/media-key controls with title and
-artwork. Meaningfully better on mobile, pairs naturally with the PWA
-work already done. Not required for a basic version, but the metadata
-plumbing is mostly already there once the global player exists, so
-cheaper to build together than bolt on later.
+**Still not built:** the Media Session API (lock-screen/media-key
+controls) — genuinely nice, not done, still fair game to add without
+disrupting anything above it, since the metadata plumbing already
+exists on each track object.
 
-**Scope read:** closer in size to the cart system than to a styling
-pass — a real architectural piece, worth its own dedicated session.
+**What step 4 (zap-splitting, multi-user queues) actually needs on
+top of this** — see the Zap-Split Radio Feed entry immediately below,
+which now assumes this foundation exists rather than needing to
+design it too.
 
 ---
 
