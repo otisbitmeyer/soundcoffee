@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { SimplePool } from "nostr-tools/pool";
 import ZapButton from "./ZapButton";
 import EpisodeComments from "./EpisodeComments";
@@ -8,6 +8,7 @@ import { useEpisodeZaps } from "@/hooks/useEpisodeZaps";
 import { useEpisodeNote } from "@/hooks/useEpisodeNote";
 import { useChapters } from "@/hooks/useChapters";
 import { useAuth } from "@/context/AuthContext";
+import { usePlayer } from "@/context/PlayerContext";
 import { episodeTags } from "@/lib/episodeId";
 import { DEFAULT_RELAYS } from "@/lib/relays";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
@@ -56,42 +57,48 @@ function stripHtml(html) {
     .trim();
 }
 
-function EpisodeCard({ episode, showImage }) {
+/** Builds the track object the global player context expects — carries
+ * full identifying metadata (not just an audio URL) so a future
+ * coordinator (the zap-split radio feed design) can reference and act
+ * on real tracks without this shape needing to change. */
+function toTrack(episode, showImage, feedTitle) {
+  return {
+    guid: episode.guid,
+    title: episode.title,
+    audioUrl: episode.audioUrl,
+    image: episode.image || showImage || null,
+    feedTitle: feedTitle || null,
+    chaptersUrl: episode.chaptersUrl || null,
+    link: episode.link,
+  };
+}
+
+function EpisodeCard({ episode, showImage, feedTitle }) {
   const [expanded, setExpanded] = useState(false);
-  const [playing, setPlaying] = useState(false);
   const [activeTab, setActiveTab] = useState(null); // null | "notes" | "chapters" | "comments"
   const [publishing, setPublishing] = useState(false);
   const { data, loading, refresh } = useEpisodeZaps(episode.guid);
   const { noteId, loading: noteLoading, refresh: refreshNote } = useEpisodeNote(episode.guid);
   const { chapters, loading: chaptersLoading, load: loadChapters } = useChapters(episode.chaptersUrl);
   const { pubkey, signEvent } = useAuth();
+  const { currentTrack, isPlaying, playTrack, togglePlayPause, seekToChapter, addToQueue } = usePlayer();
   const isSoundCoffeeAccount = pubkey === SOUND_COFFEE_PUBKEY;
 
   const showNotes = stripHtml(episode.description);
+  const track = toTrack(episode, showImage, feedTitle);
+  const isThisTrackLoaded = currentTrack?.guid === episode.guid;
+  const isThisPlaying = isThisTrackLoaded && isPlaying;
 
-  const audioRef = useRef(null);
-  const pendingSeekRef = useRef(null); // seconds to seek to once the audio element is ready
-
-  // Applies a pending seek once the <audio> element actually exists —
-  // covers both "already playing, seek immediately" and "wasn't
-  // playing yet, start playing then seek once mounted".
-  useEffect(() => {
-    if (playing && pendingSeekRef.current != null && audioRef.current) {
-      audioRef.current.currentTime = pendingSeekRef.current;
-      audioRef.current.play().catch(() => {});
-      pendingSeekRef.current = null;
+  function handleListenClick() {
+    if (isThisTrackLoaded) {
+      togglePlayPause();
+    } else {
+      playTrack(track);
     }
-  }, [playing]);
+  }
 
   function handleChapterClick(startTime) {
-    pendingSeekRef.current = startTime;
-    if (playing && audioRef.current) {
-      audioRef.current.currentTime = startTime;
-      audioRef.current.play().catch(() => {});
-      pendingSeekRef.current = null;
-    } else {
-      setPlaying(true); // effect above applies the seek once mounted
-    }
+    seekToChapter(track, startTime);
   }
 
   function selectTab(tab) {
@@ -153,12 +160,22 @@ function EpisodeCard({ episode, showImage }) {
 
             <div className="flex shrink-0 flex-col items-end gap-2">
               {episode.audioUrl ? (
-                <button
-                  onClick={() => setPlaying((p) => !p)}
-                  className="border-2 border-paper/50 px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:border-jade hover:text-jade"
-                >
-                  {playing ? "CLOSE" : "LISTEN ▸"}
-                </button>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={handleListenClick}
+                    className="border-2 border-paper/50 px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:border-jade hover:text-jade"
+                  >
+                    {isThisPlaying ? "PAUSE" : "LISTEN ▸"}
+                  </button>
+                  <button
+                    onClick={() => addToQueue(track)}
+                    title="Add to queue"
+                    aria-label="Add to queue"
+                    className="border-2 border-paper/50 px-3 py-2 font-display text-sm text-paper transition hover:border-jade hover:text-jade"
+                  >
+                    +
+                  </button>
+                </div>
               ) : (
                 <a
                   href={episode.link}
@@ -195,19 +212,6 @@ function EpisodeCard({ episode, showImage }) {
               )}
             </div>
           </div>
-
-          {playing && episode.audioUrl && (
-            <audio
-              ref={audioRef}
-              controls
-              autoPlay
-              src={episode.audioUrl}
-              className="mt-4 w-full"
-            >
-              Your browser doesn&rsquo;t support inline audio.{" "}
-              <a href={episode.link}>Listen on the episode page instead.</a>
-            </audio>
-          )}
         </div>
 
         {episode.guid && (
@@ -287,13 +291,13 @@ function EpisodeCard({ episode, showImage }) {
   );
 }
 
-export default function EpisodeList({ episodes, count, showImage }) {
+export default function EpisodeList({ episodes, count, showImage, feedTitle }) {
   const list = count ? episodes.slice(0, count) : episodes;
 
   return (
     <div className="space-y-2">
       {list.map((ep, i) => (
-        <EpisodeCard key={ep.guid || i} episode={ep} showImage={showImage} />
+        <EpisodeCard key={ep.guid || i} episode={ep} showImage={showImage} feedTitle={feedTitle} />
       ))}
     </div>
   );

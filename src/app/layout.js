@@ -2,7 +2,10 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
+import { PlayerProvider } from "@/context/PlayerContext";
 import CartDrawer from "@/components/CartDrawer";
+import PlayerBar from "@/components/PlayerBar";
+import PageContent from "@/components/PageContent";
 import StripeReturnBanner from "@/components/StripeReturnBanner";
 import PwaInstall from "@/components/PwaInstall";
 
@@ -42,10 +45,13 @@ export default function RootLayout({ children }) {
       <body className="min-h-full flex flex-col font-serif">
         <AuthProvider>
           <CartProvider>
-            <StripeReturnBanner />
-            <PwaInstall />
-            {children}
-            <CartDrawer />
+            <PlayerProvider>
+              <StripeReturnBanner />
+              <PwaInstall />
+              <PageContent>{children}</PageContent>
+              <CartDrawer />
+              <PlayerBar />
+            </PlayerProvider>
           </CartProvider>
         </AuthProvider>
       </body>

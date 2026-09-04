@@ -31,7 +31,7 @@ export default function ListeningLair() {
             height={156}
             className="mx-auto mt-3 h-auto w-full max-w-xl rotate-2"
           />
-          <div className="mt-6">
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
             <ZapButton
               recipientPubkey={SOUND_COFFEE_PUBKEY}
               label="Boost the podcast"
@@ -39,12 +39,18 @@ export default function ListeningLair() {
             >
               ⚡ BOOST THE PODCAST
             </ZapButton>
+            <a
+              href="/radio"
+              className="border-2 border-jade/60 px-5 py-2.5 font-display text-sm tracking-widest text-jade transition hover:border-jade hover:bg-jade hover:text-ink"
+            >
+              📻 BUILD A RADIO STATION
+            </a>
           </div>
         </div>
 
         <div className="mx-auto max-w-4xl px-6 py-16">
           {episodes ? (
-            <EpisodeList episodes={episodes} showImage={feedInfo?.image} />
+            <EpisodeList episodes={episodes} showImage={feedInfo?.image} feedTitle="Sound Coffee" />
           ) : (
             <p className="text-center font-serif text-paper/50">Loading episodes…</p>
           )}
