@@ -7,6 +7,109 @@ import LoginModal from "@/components/LoginModal";
 import { useAuth } from "@/context/AuthContext";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
+/** A curated podcast's row, expandable to browse and add its own
+ * episodes directly to the featured playlist — fetches lazily, only
+ * once actually clicked, reusing the same preview endpoint used for
+ * adding a brand new feed. */
+function CuratedPodcastRow({ podcast, addingEpisodeGuid, onAddEpisode, onRemove }) {
+  const [expanded, setExpanded] = useState(false);
+  const [episodes, setEpisodes] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  async function toggleExpand() {
+    const next = !expanded;
+    setExpanded(next);
+    if (next && episodes === null) {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/radio-podcasts/preview?url=${encodeURIComponent(podcast.feedUrl)}`);
+        const data = await res.json();
+        setEpisodes(data.recentEpisodes || []);
+      } catch {
+        setEpisodes([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+  }
+
+  return (
+    <div className="border border-ink/15">
+      <div className="flex items-center justify-between px-3 py-2">
+        <button onClick={toggleExpand} className="flex flex-1 items-center gap-3 text-left">
+          {podcast.image && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={podcast.image} alt="" className="h-8 w-8 border border-ink/20 object-cover" />
+          )}
+          <p className="font-serif text-sm text-ink">
+            {podcast.name}
+            {!podcast.recipientPubkey && (
+              <span className="ml-2 font-display text-[10px] tracking-widest text-rust">
+                NO ZAP RECIPIENT SET
+              </span>
+            )}
+          </p>
+          <span className="font-display text-xs text-ink/40">{expanded ? "▲" : "▼"}</span>
+        </button>
+        <button
+          onClick={() => onRemove(podcast.feedUrl)}
+          className="shrink-0 font-display text-xs tracking-widest text-rust hover:text-ink"
+        >
+          REMOVE
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="border-t border-ink/10 px-3 py-2">
+          {loading && <p className="font-serif text-xs italic text-ink/40">Loading episodes…</p>}
+          {!loading && episodes?.length === 0 && (
+            <p className="font-serif text-xs italic text-ink/40">No episodes found.</p>
+          )}
+          {!loading && episodes?.length > 0 && (
+            <div className="space-y-1.5">
+              {episodes.map((ep) => (
+                <div key={ep.guid} className="flex items-center justify-between gap-2 border border-ink/10 px-2 py-1.5">
+                  <p className="truncate font-serif text-xs text-ink">{ep.title}</p>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      onClick={() =>
+                        onAddEpisode(ep, "podcast_episode", {
+                          feedUrl: podcast.feedUrl,
+                          feedName: podcast.name,
+                          feedImage: podcast.image,
+                          npub: podcast.recipientPubkey,
+                        })
+                      }
+                      disabled={addingEpisodeGuid === ep.guid || !ep.audioUrl}
+                      className="font-display text-[10px] tracking-widest text-jade hover:text-ink disabled:opacity-40"
+                    >
+                      {addingEpisodeGuid === ep.guid ? "…" : "+ ADD"}
+                    </button>
+                    <button
+                      onClick={() =>
+                        onAddEpisode(ep, "music_track", {
+                          feedUrl: podcast.feedUrl,
+                          feedName: podcast.name,
+                          feedImage: podcast.image,
+                          npub: podcast.recipientPubkey,
+                        })
+                      }
+                      disabled={addingEpisodeGuid === ep.guid || !ep.audioUrl}
+                      className="font-display text-[10px] tracking-widest text-rust hover:text-ink disabled:opacity-40"
+                    >
+                      + MUSIC
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminRadio() {
   const { isLoggedIn, pubkey, restoring } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
@@ -115,26 +218,27 @@ export default function AdminRadio() {
     fetchPodcasts();
   }
 
-  async function handleAddEpisode(episode, trackType) {
+  async function handleAddEpisode(episode, trackType, feedContext) {
     setAddingEpisodeGuid(episode.guid);
     try {
+      const { feedUrl, feedName, feedImage, npub } = feedContext;
       let recipientPubkey = null;
-      if (npubInput.trim()) {
-        recipientPubkey = npubInput.trim().startsWith("npub1")
-          ? nip19.decode(npubInput.trim()).data
-          : npubInput.trim();
+      if (npub?.trim()) {
+        recipientPubkey = npub.trim().startsWith("npub1")
+          ? nip19.decode(npub.trim()).data
+          : npub.trim();
       }
       await fetch("/api/radio-playlist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           guid: episode.guid,
-          feedUrl: feedUrlInput.trim(),
+          feedUrl,
           title: episode.title,
           audioUrl: episode.audioUrl,
-          image: episode.image || preview.image,
+          image: episode.image || feedImage,
           chaptersUrl: episode.chaptersUrl,
-          feedName: preview.name,
+          feedName,
           recipientPubkey,
           trackType,
         }),
@@ -254,14 +358,28 @@ export default function AdminRadio() {
                               <p className="truncate font-serif text-xs text-ink">{ep.title}</p>
                               <div className="flex shrink-0 gap-2">
                                 <button
-                                  onClick={() => handleAddEpisode(ep, "podcast_episode")}
+                                  onClick={() =>
+                                    handleAddEpisode(ep, "podcast_episode", {
+                                      feedUrl: feedUrlInput.trim(),
+                                      feedName: preview.name,
+                                      feedImage: preview.image,
+                                      npub: npubInput,
+                                    })
+                                  }
                                   disabled={addingEpisodeGuid === ep.guid || !ep.audioUrl}
                                   className="font-display text-[10px] tracking-widest text-jade hover:text-ink disabled:opacity-40"
                                 >
                                   {addingEpisodeGuid === ep.guid ? "…" : "+ ADD"}
                                 </button>
                                 <button
-                                  onClick={() => handleAddEpisode(ep, "music_track")}
+                                  onClick={() =>
+                                    handleAddEpisode(ep, "music_track", {
+                                      feedUrl: feedUrlInput.trim(),
+                                      feedName: preview.name,
+                                      feedImage: preview.image,
+                                      npub: npubInput,
+                                    })
+                                  }
                                   disabled={addingEpisodeGuid === ep.guid || !ep.audioUrl}
                                   className="font-display text-[10px] tracking-widest text-rust hover:text-ink disabled:opacity-40"
                                 >
@@ -279,6 +397,9 @@ export default function AdminRadio() {
 
               <div className="mt-6">
                 <p className="font-display text-sm text-ink">Currently curated</p>
+                <p className="mt-1 font-serif text-[11px] italic text-ink/40">
+                  Click a show to browse and add its own episodes directly.
+                </p>
                 <div className="mt-2 space-y-2">
                   {podcasts === null && (
                     <p className="font-serif text-xs italic text-ink/40">Loading…</p>
@@ -289,31 +410,13 @@ export default function AdminRadio() {
                     </p>
                   )}
                   {podcasts?.map((p) => (
-                    <div
+                    <CuratedPodcastRow
                       key={p.feedUrl}
-                      className="flex items-center justify-between border border-ink/15 px-3 py-2"
-                    >
-                      <div className="flex items-center gap-3">
-                        {p.image && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={p.image} alt="" className="h-8 w-8 border border-ink/20 object-cover" />
-                        )}
-                        <p className="font-serif text-sm text-ink">
-                          {p.name}
-                          {!p.recipientPubkey && (
-                            <span className="ml-2 font-display text-[10px] tracking-widest text-rust">
-                              NO ZAP RECIPIENT SET
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => handleRemove(p.feedUrl)}
-                        className="font-display text-xs tracking-widest text-rust hover:text-ink"
-                      >
-                        REMOVE
-                      </button>
-                    </div>
+                      podcast={p}
+                      addingEpisodeGuid={addingEpisodeGuid}
+                      onAddEpisode={handleAddEpisode}
+                      onRemove={handleRemove}
+                    />
                   ))}
                 </div>
               </div>

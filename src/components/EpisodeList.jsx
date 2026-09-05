@@ -136,7 +136,7 @@ function EpisodeCard({ episode, showImage, feedTitle, recipientPubkey }) {
         onClick={() => setExpanded((e) => !e)}
         className="w-full px-6 py-5 text-center transition"
       >
-        <h3 className="font-serif text-2xl tracking-wide text-paper transition hover:text-jade sm:text-3xl">
+        <h3 className="font-display text-2xl tracking-wide text-paper transition hover:text-jade sm:text-3xl">
           {episode.title}
         </h3>
       </button>
@@ -278,6 +278,15 @@ function EpisodeCard({ episode, showImage, feedTitle, recipientPubkey }) {
             )}
 
             {activeTab === "comments" && <EpisodeComments data={data} loading={loading} />}
+
+            <div className="border-t border-paper/10 py-3 text-center">
+              <button
+                onClick={() => setExpanded(false)}
+                className="font-display text-xs tracking-widest text-paper/40 transition hover:text-jade"
+              >
+                ▲ COLLAPSE
+              </button>
+            </div>
           </>
         )}
       </div>
