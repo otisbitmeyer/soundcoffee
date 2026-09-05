@@ -188,6 +188,67 @@ export default function CheckoutModal({ onClose }) {
   const totalSats = itemsSats != null ? itemsSats + shippingSats : null;
   const totalUsdCents = itemsUsdCents != null ? itemsUsdCents + (shippingUsdCents || 0) : null;
 
+  const [discountCodeInput, setDiscountCodeInput] = useState("");
+  const [appliedDiscount, setAppliedDiscount] = useState(null); // { code, discountType, discountValue }
+  const [discountStatus, setDiscountStatus] = useState(null); // "checking" | "applied" | "error"
+  const [discountMessage, setDiscountMessage] = useState("");
+
+  async function handleApplyDiscount() {
+    if (!discountCodeInput.trim()) return;
+    setDiscountStatus("checking");
+    setDiscountMessage("");
+    try {
+      const res = await fetch("/api/discounts/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: discountCodeInput, pubkey: pubkey || null }),
+      });
+      const data = await res.json();
+      if (data.valid) {
+        setAppliedDiscount(data);
+        setDiscountStatus("applied");
+      } else {
+        setAppliedDiscount(null);
+        setDiscountStatus("error");
+        setDiscountMessage(data.reason || "That code isn't valid.");
+      }
+    } catch {
+      setDiscountStatus("error");
+      setDiscountMessage("Couldn't check that code — try again.");
+    }
+  }
+
+  function removeDiscount() {
+    setAppliedDiscount(null);
+    setDiscountStatus(null);
+    setDiscountCodeInput("");
+  }
+
+  // Percent discounts apply uniformly to whichever total actually gets
+  // charged; flat-dollar discounts convert to an equivalent sats
+  // reduction so both payment methods stay consistent with each other.
+  function applyDiscount(sats, usdCents) {
+    if (!appliedDiscount || sats == null) return { sats, usdCents };
+    if (appliedDiscount.discountType === "percent") {
+      const factor = 1 - appliedDiscount.discountValue / 100;
+      return {
+        sats: Math.max(0, Math.round(sats * factor)),
+        usdCents: usdCents != null ? Math.max(0, Math.round(usdCents * factor)) : usdCents,
+      };
+    }
+    // flat_usd
+    const discountCents = Math.round(appliedDiscount.discountValue * 100);
+    const discountSats = btcUsdPrice
+      ? Math.round((appliedDiscount.discountValue / btcUsdPrice) * 100_000_000)
+      : 0;
+    return {
+      sats: Math.max(0, sats - discountSats),
+      usdCents: usdCents != null ? Math.max(0, usdCents - discountCents) : usdCents,
+    };
+  }
+
+  const { sats: finalTotalSats, usdCents: finalTotalUsdCents } = applyDiscount(totalSats, totalUsdCents);
+
   const ensureIdentityBase = useEnsureIdentity();
 
   // Thin wrapper — the shared hook doesn't know about this component's
@@ -301,10 +362,18 @@ export default function CheckoutModal({ onClose }) {
         ["subject", `Order: ${cartSummary}`],
         ["type", "order"],
         ["order", newOrderId],
-        ["amount", String(totalSats)],
+        ["amount", String(finalTotalSats)],
         ["currency", "SATS"],
         ...cartItems.map((i) => ["item", i.coordinate, String(i.quantity)]),
       ];
+
+      if (appliedDiscount) {
+        fetch("/api/discounts/redeem", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: appliedDiscount.code }),
+        }).catch(() => {});
+      }
       if (combinedAddress) orderTags.push(["address", combinedAddress]);
       if (email.trim()) orderTags.push(["email", email.trim()]);
       // Referencing the specific listing whose shipping cost was
@@ -335,8 +404,8 @@ export default function CheckoutModal({ onClose }) {
           isGuest: identity.isGuest,
           customerEmail: email.trim() || null,
           paymentMethod,
-          amountSats: totalSats,
-          amountUsdCents: totalUsdCents,
+          amountSats: finalTotalSats,
+          amountUsdCents: finalTotalUsdCents,
           items: cartItems.map((i) => ({
             coordinate: i.coordinate,
             quantity: i.quantity,
@@ -366,7 +435,7 @@ export default function CheckoutModal({ onClose }) {
           orderId: newOrderId,
           itemTitle: cartSummary,
           quantity: cartItems.reduce((sum, i) => sum + i.quantity, 0),
-          amountSats: totalSats,
+          amountSats: finalTotalSats,
           buyerNpub: identity.isGuest ? null : npub,
           buyerEmail: email.trim() || null,
           address: combinedAddress || null,
@@ -389,7 +458,7 @@ export default function CheckoutModal({ onClose }) {
             sellerPubkey,
             invoice: `stripe:${newOrderId}`,
             verifyUrl: null,
-            amountSats: totalSats,
+            amountSats: finalTotalSats,
             isGuest: identity.isGuest,
           }),
         });
@@ -401,7 +470,7 @@ export default function CheckoutModal({ onClose }) {
           body: JSON.stringify({
             orderId: newOrderId,
             itemTitle: cartSummary,
-            amountUsdCents: totalUsdCents,
+            amountUsdCents: finalTotalUsdCents,
             buyerEmail: email.trim() || null,
             successUrl: `${origin}?stripe_success=1&order=${newOrderId}`,
             cancelUrl: `${origin}?stripe_cancel=1`,
@@ -419,7 +488,7 @@ export default function CheckoutModal({ onClose }) {
       const lnurlData = await resolveLud16(sellerProfile.lud16);
       const { pr, verify } = await requestPlainInvoice({
         callback: lnurlData.callback,
-        amountMsats: totalSats * 1000,
+        amountMsats: finalTotalSats * 1000,
         comment: `Order ${newOrderId}`,
       });
 
@@ -437,7 +506,7 @@ export default function CheckoutModal({ onClose }) {
           sellerPubkey,
           invoice: pr,
           verifyUrl: verify,
-          amountSats: totalSats,
+          amountSats: finalTotalSats,
           isGuest: identity.isGuest,
         }),
       }).catch(() => {});
@@ -483,7 +552,7 @@ export default function CheckoutModal({ onClose }) {
             ["subject", "order-receipt"],
             ["type", "payment_proof"],
             ["order", orderId],
-            ["amount", String(totalSats)],
+            ["amount", String(finalTotalSats)],
             ["currency", "SATS"],
             ["rail", "lightning"],
           ],
@@ -674,10 +743,57 @@ export default function CheckoutModal({ onClose }) {
                 />
               </div>
 
+              <div>
+                <label className="block font-display text-xs tracking-widest text-ink/60">
+                  DISCOUNT CODE
+                </label>
+                {appliedDiscount ? (
+                  <div className="mt-1 flex items-center justify-between border-2 border-jade/40 bg-jade/5 px-3 py-2">
+                    <p className="font-mono text-sm text-jade">
+                      {appliedDiscount.code} applied &mdash;{" "}
+                      {appliedDiscount.discountType === "percent"
+                        ? `${appliedDiscount.discountValue}% off`
+                        : `$${appliedDiscount.discountValue} off`}
+                    </p>
+                    <button
+                      onClick={removeDiscount}
+                      className="font-display text-xs tracking-widest text-rust hover:text-ink"
+                    >
+                      REMOVE
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-1 flex gap-2">
+                    <input
+                      value={discountCodeInput}
+                      onChange={(e) => setDiscountCodeInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleApplyDiscount()}
+                      placeholder="Have a code?"
+                      className="flex-1 border-2 border-ink/30 px-3 py-2 font-mono text-sm uppercase text-ink focus:border-ink focus:outline-none"
+                    />
+                    <button
+                      onClick={handleApplyDiscount}
+                      disabled={discountStatus === "checking"}
+                      className="border-2 border-ink px-4 py-2 font-display text-xs tracking-widest text-ink hover:border-jade hover:text-jade disabled:opacity-50"
+                    >
+                      {discountStatus === "checking" ? "…" : "APPLY"}
+                    </button>
+                  </div>
+                )}
+                {discountStatus === "error" && (
+                  <p className="mt-1 font-serif text-xs text-rust">{discountMessage}</p>
+                )}
+              </div>
+
               {totalSats && (
                 <div className="border-y-2 border-ink py-3 text-center">
+                  {appliedDiscount && (
+                    <p className="font-serif text-sm text-ink/40 line-through">
+                      {formatDualPrice({ sats: totalSats, usdCents: totalUsdCents })}
+                    </p>
+                  )}
                   <p className="font-display text-2xl text-ink">
-                    {formatDualPrice({ sats: totalSats, usdCents: totalUsdCents })}
+                    {formatDualPrice({ sats: finalTotalSats, usdCents: finalTotalUsdCents })}
                   </p>
                   {shippingSats ? (
                     <p className="mt-1 font-serif text-xs text-ink/50">
@@ -713,19 +829,20 @@ export default function CheckoutModal({ onClose }) {
                     disabled={!totalSats}
                     className="w-full border-2 border-ink bg-ink px-4 py-3 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust disabled:opacity-50"
                   >
-                    {`⚡ PAY WITH LIGHTNING${totalSats ? ` (${totalSats.toLocaleString()} sats)` : ""}`}
+                    {`⚡ PAY WITH LIGHTNING${finalTotalSats != null ? ` (${finalTotalSats.toLocaleString()} sats)` : ""}`}
                   </button>
                   <button
                     onClick={() => handlePlaceOrder("card")}
                     disabled={!totalUsdCents}
                     className="w-full border-2 border-ink px-4 py-3 font-display text-sm tracking-widest text-ink transition hover:border-jade hover:text-jade disabled:opacity-50"
                   >
-                    {`💳 PAY WITH CARD${totalUsdCents ? ` ($${(totalUsdCents / 100).toFixed(2)})` : ""}`}
+                    {`💳 PAY WITH CARD${finalTotalUsdCents != null ? ` ($${(finalTotalUsdCents / 100).toFixed(2)})` : ""}`}
                   </button>
                 </div>
               )}
             </div>
           )}
+
 
           {status === "invoice" && invoice && (
             <div className="space-y-4 text-center">

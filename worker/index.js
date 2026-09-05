@@ -1006,6 +1006,111 @@ async function handleGetInventory(request, env) {
 }
 
 // ---------------------------------------------------------------------
+// Discount codes — applied at checkout before either payment method
+// (Lightning or card) is invoked, so the discount is reflected in
+// whichever total actually gets charged either way. Optionally
+// restricted to specific npubs; when allowed_npubs is empty, the code
+// works for anyone who enters it.
+// ---------------------------------------------------------------------
+
+async function handleCreateDiscount(request, env) {
+  const body = await request.json();
+  const { code, discountType, discountValue, allowedNpubs } = body;
+
+  if (!code || !discountType || discountValue == null) {
+    return jsonResponse({ error: "Missing code, discountType, or discountValue." }, 422);
+  }
+  if (discountType !== "percent" && discountType !== "flat_usd") {
+    return jsonResponse({ error: "discountType must be 'percent' or 'flat_usd'." }, 422);
+  }
+
+  const normalizedCode = code.trim().toUpperCase();
+
+  await env.DB.prepare(
+    `INSERT INTO discount_codes (code, discount_type, discount_value, allowed_npubs, active, uses_count, created_at)
+     VALUES (?, ?, ?, ?, 1, 0, ?)
+     ON CONFLICT(code) DO UPDATE SET
+       discount_type = excluded.discount_type,
+       discount_value = excluded.discount_value,
+       allowed_npubs = excluded.allowed_npubs,
+       active = 1`
+  )
+    .bind(
+      normalizedCode,
+      discountType,
+      discountValue,
+      allowedNpubs && allowedNpubs.length > 0 ? JSON.stringify(allowedNpubs) : null,
+      Date.now()
+    )
+    .run();
+
+  return jsonResponse({ ok: true, code: normalizedCode });
+}
+
+async function handleListDiscounts(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM discount_codes ORDER BY created_at DESC`
+  ).all();
+  return jsonResponse({
+    discounts: results.map((d) => ({
+      ...d,
+      allowedNpubs: d.allowed_npubs ? JSON.parse(d.allowed_npubs) : [],
+      active: !!d.active,
+    })),
+  });
+}
+
+async function handleDeactivateDiscount(request, env) {
+  const { code } = await request.json();
+  if (!code) return jsonResponse({ error: "Missing code." }, 422);
+  await env.DB.prepare(`UPDATE discount_codes SET active = 0 WHERE code = ?`)
+    .bind(code.trim().toUpperCase())
+    .run();
+  return jsonResponse({ ok: true });
+}
+
+/**
+ * Validates a discount code against an optional buyer pubkey (hex).
+ * Returns the discount to apply, or a clear reason it can't be used —
+ * never throws, since checkout needs a clean yes/no either way.
+ */
+async function handleValidateDiscount(request, env) {
+  const { code, pubkey } = await request.json();
+  if (!code) return jsonResponse({ valid: false, reason: "No code entered." });
+
+  const normalizedCode = code.trim().toUpperCase();
+  const row = await env.DB.prepare(`SELECT * FROM discount_codes WHERE code = ?`)
+    .bind(normalizedCode)
+    .first();
+
+  if (!row) return jsonResponse({ valid: false, reason: "That code doesn't exist." });
+  if (!row.active) return jsonResponse({ valid: false, reason: "That code is no longer active." });
+
+  const allowedNpubs = row.allowed_npubs ? JSON.parse(row.allowed_npubs) : [];
+  if (allowedNpubs.length > 0) {
+    if (!pubkey || !allowedNpubs.includes(pubkey)) {
+      return jsonResponse({ valid: false, reason: "This code isn't valid for your account." });
+    }
+  }
+
+  return jsonResponse({
+    valid: true,
+    code: normalizedCode,
+    discountType: row.discount_type,
+    discountValue: row.discount_value,
+  });
+}
+
+async function handleRedeemDiscount(request, env) {
+  const { code } = await request.json();
+  if (!code) return jsonResponse({ error: "Missing code." }, 422);
+  await env.DB.prepare(`UPDATE discount_codes SET uses_count = uses_count + 1 WHERE code = ?`)
+    .bind(code.trim().toUpperCase())
+    .run();
+  return jsonResponse({ ok: true });
+}
+
+// ---------------------------------------------------------------------
 // Podcast feed proxy — replaces rss2json, whose free tier turned out to
 // be genuinely unreliable (rejects requests outright above its default
 // item count, and rate-limits aggressively even at the default). This
@@ -1355,6 +1460,21 @@ async function handleFetch(request, env) {
   }
   if (request.method === "GET" && url.pathname === "/api/inventory") {
     return handleGetInventory(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/discounts") {
+    return handleCreateDiscount(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/discounts") {
+    return handleListDiscounts(env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/discounts/deactivate") {
+    return handleDeactivateDiscount(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/discounts/validate") {
+    return handleValidateDiscount(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/discounts/redeem") {
+    return handleRedeemDiscount(request, env);
   }
   if (request.method === "GET" && url.pathname === "/api/podcast-feed") {
     return handlePodcastFeed(request, env);

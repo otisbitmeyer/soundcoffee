@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { SimplePool } from "nostr-tools/pool";
+import { nip19 } from "nostr-tools";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import { useAuth } from "@/context/AuthContext";
@@ -17,6 +18,14 @@ export default function AdminPage() {
   const [newRelayInput, setNewRelayInput] = useState("");
   const [paymentPrefStatus, setPaymentPrefStatus] = useState(null);
   const [existingPaymentPref, setExistingPaymentPref] = useState(null);
+
+  const [discounts, setDiscounts] = useState(null);
+  const [newCode, setNewCode] = useState("");
+  const [newType, setNewType] = useState("percent");
+  const [newValue, setNewValue] = useState("");
+  const [newNpubs, setNewNpubs] = useState(""); // comma/newline separated, converted to hex on save
+  const [savingDiscount, setSavingDiscount] = useState(false);
+  const [discountError, setDiscountError] = useState("");
 
   const isRightAccount = pubkey === SOUND_COFFEE_PUBKEY;
 
@@ -58,6 +67,87 @@ export default function AdminPage() {
       }
     })();
   }, [isRightAccount]);
+
+  useEffect(() => {
+    if (!isRightAccount) return;
+    fetchDiscounts();
+  }, [isRightAccount]);
+
+  async function fetchDiscounts() {
+    try {
+      const res = await fetch("/api/discounts");
+      const data = await res.json();
+      setDiscounts(data.discounts || []);
+    } catch {
+      setDiscounts([]);
+    }
+  }
+
+  /** Converts a mix of npub/hex strings (however the person happens to
+   * paste them in) into hex pubkeys, since that's what actually gets
+   * compared against the logged-in buyer's real pubkey at checkout. */
+  function parseNpubsInput(text) {
+    return text
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => {
+        if (s.startsWith("npub1")) {
+          try {
+            return nip19.decode(s).data;
+          } catch {
+            return null;
+          }
+        }
+        return /^[0-9a-f]{64}$/i.test(s) ? s : null; // only accept it if it's actually a valid-looking hex pubkey
+      })
+      .filter(Boolean);
+  }
+
+  async function handleCreateDiscount() {
+    setDiscountError("");
+    if (!newCode.trim()) {
+      setDiscountError("Enter a code.");
+      return;
+    }
+    if (!newValue || Number(newValue) <= 0) {
+      setDiscountError("Enter a value greater than 0.");
+      return;
+    }
+
+    setSavingDiscount(true);
+    try {
+      const allowedNpubs = parseNpubsInput(newNpubs);
+      const res = await fetch("/api/discounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: newCode,
+          discountType: newType,
+          discountValue: Number(newValue),
+          allowedNpubs,
+        }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      setNewCode("");
+      setNewValue("");
+      setNewNpubs("");
+      await fetchDiscounts();
+    } catch {
+      setDiscountError("Couldn't save that code. Try again.");
+    } finally {
+      setSavingDiscount(false);
+    }
+  }
+
+  async function handleDeactivateDiscount(code) {
+    await fetch("/api/discounts/deactivate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    fetchDiscounts();
+  }
 
   function addRelay() {
     let url = newRelayInput.trim();
@@ -259,6 +349,96 @@ export default function AdminPage() {
                       ? "✓ SET"
                       : "SET TO LIGHTNING"}
                   </button>
+                </div>
+
+                <div className="border-t border-ink/10 pt-4">
+                  <p className="font-display text-sm text-ink">Discount Codes</p>
+                  <p className="mt-1 font-serif text-xs text-ink/60">
+                    Applied at checkout, before either payment method is
+                    charged. Leave the npub field empty for a code anyone
+                    can use.
+                  </p>
+
+                  <div className="mt-3 space-y-2 border border-ink/15 p-3">
+                    <div className="flex gap-2">
+                      <input
+                        value={newCode}
+                        onChange={(e) => setNewCode(e.target.value)}
+                        placeholder="CODE (e.g. WELCOME10)"
+                        className="flex-1 border-2 border-ink/30 px-2 py-1.5 font-mono text-xs uppercase focus:border-ink focus:outline-none"
+                      />
+                      <select
+                        value={newType}
+                        onChange={(e) => setNewType(e.target.value)}
+                        className="border-2 border-ink/30 px-2 py-1.5 font-serif text-xs focus:border-ink focus:outline-none"
+                      >
+                        <option value="percent">% off</option>
+                        <option value="flat_usd">$ off</option>
+                      </select>
+                      <input
+                        value={newValue}
+                        onChange={(e) => setNewValue(e.target.value)}
+                        type="number"
+                        placeholder={newType === "percent" ? "10" : "5"}
+                        className="w-20 border-2 border-ink/30 px-2 py-1.5 font-mono text-xs focus:border-ink focus:outline-none"
+                      />
+                    </div>
+                    <textarea
+                      value={newNpubs}
+                      onChange={(e) => setNewNpubs(e.target.value)}
+                      placeholder="Optional — restrict to specific npubs, one per line or comma-separated. Leave blank for anyone."
+                      rows={2}
+                      className="w-full resize-none border-2 border-ink/30 px-2 py-1.5 font-mono text-xs focus:border-ink focus:outline-none"
+                    />
+                    {discountError && (
+                      <p className="font-serif text-xs text-rust">{discountError}</p>
+                    )}
+                    <button
+                      onClick={handleCreateDiscount}
+                      disabled={savingDiscount}
+                      className="border-2 border-ink px-4 py-1.5 font-display text-xs tracking-widest text-ink hover:border-jade hover:text-jade disabled:opacity-50"
+                    >
+                      {savingDiscount ? "SAVING…" : "+ CREATE CODE"}
+                    </button>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    {discounts === null && (
+                      <p className="font-serif text-xs italic text-ink/40">Loading…</p>
+                    )}
+                    {discounts?.length === 0 && (
+                      <p className="font-serif text-xs italic text-ink/40">
+                        No discount codes yet.
+                      </p>
+                    )}
+                    {discounts?.map((d) => (
+                      <div
+                        key={d.code}
+                        className={`flex items-center justify-between border border-ink/15 px-3 py-2 ${
+                          d.active ? "" : "opacity-40"
+                        }`}
+                      >
+                        <div>
+                          <p className="font-mono text-sm text-ink">
+                            {d.code}{" "}
+                            <span className="font-serif text-xs text-ink/60">
+                              — {d.discount_type === "percent" ? `${d.discount_value}% off` : `$${d.discount_value} off`}
+                              {d.allowedNpubs?.length > 0 && ` · ${d.allowedNpubs.length} npub${d.allowedNpubs.length === 1 ? "" : "s"} only`}
+                              {" · used "}{d.uses_count}{" time"}{d.uses_count === 1 ? "" : "s"}
+                            </span>
+                          </p>
+                        </div>
+                        {d.active && (
+                          <button
+                            onClick={() => handleDeactivateDiscount(d.code)}
+                            className="shrink-0 font-display text-xs tracking-widest text-rust hover:text-ink"
+                          >
+                            DEACTIVATE
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
