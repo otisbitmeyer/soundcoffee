@@ -6,7 +6,6 @@ import Header from "@/components/Header";
 import EpisodeList from "@/components/EpisodeList";
 import ZapButton from "@/components/ZapButton";
 import Footer from "@/components/Footer";
-import { usePlayer } from "@/context/PlayerContext";
 import { usePodcastFeed } from "@/hooks/usePodcastFeed";
 import { MAIN_FEED } from "@/lib/podcastFeeds";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
@@ -75,34 +74,13 @@ function PodcastRow({ name, feedUrl, image, recipientPubkey, isOurShow }) {
 
 export default function ListeningLair() {
   const [curatedPodcasts, setCuratedPodcasts] = useState([]);
-  const [playlistEpisodes, setPlaylistEpisodes] = useState([]);
-  const { playStation } = usePlayer();
 
   useEffect(() => {
     fetch("/api/radio-podcasts")
       .then((res) => res.json())
       .then((data) => setCuratedPodcasts(data.podcasts || []))
       .catch(() => setCuratedPodcasts([]));
-
-    fetch("/api/radio-playlist")
-      .then((res) => res.json())
-      .then((data) => setPlaylistEpisodes(data.episodes || []))
-      .catch(() => setPlaylistEpisodes([]));
   }, []);
-
-  function handlePlayStation() {
-    playStation(
-      playlistEpisodes.map((e) => ({
-        guid: e.guid,
-        title: e.title,
-        audioUrl: e.audioUrl,
-        image: e.image,
-        chaptersUrl: e.chaptersUrl,
-        feedTitle: e.feedName,
-        recipientPubkey: e.recipientPubkey || SOUND_COFFEE_PUBKEY,
-      }))
-    );
-  }
 
   return (
     <>
@@ -123,20 +101,6 @@ export default function ListeningLair() {
         </div>
 
         <div className="mx-auto max-w-4xl px-6 py-16">
-          {playlistEpisodes.length > 0 && (
-            <div className="mb-12 text-center">
-              <p className="font-display text-xs tracking-widest text-jade">
-                FEATURED
-              </p>
-              <button
-                onClick={handlePlayStation}
-                className="mt-3 border-2 border-jade bg-jade px-6 py-3 font-display text-sm tracking-widest text-ink transition hover:bg-transparent hover:text-jade"
-              >
-                ▶ PLAY RADIO STATION
-              </button>
-            </div>
-          )}
-
           <PodcastRow name="Sound Coffee" feedUrl={MAIN_FEED.url} recipientPubkey={SOUND_COFFEE_PUBKEY} isOurShow />
 
           {curatedPodcasts.length > 0 && (

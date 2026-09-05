@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
+import { usePlayer } from "@/context/PlayerContext";
 import { useProfile } from "@/hooks/useProfile";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 import LoginModal from "./LoginModal";
@@ -17,13 +18,36 @@ function shortNpub(npub) {
 export default function Header() {
   const { isLoggedIn, pubkey, npub, logout, restoring } = useAuth();
   const { profile } = useProfile(pubkey);
+  const { playStation } = usePlayer();
   const [modalOpen, setModalOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [playlistEpisodes, setPlaylistEpisodes] = useState([]);
   const menuRef = useRef(null);
 
   const displayName = profile?.display_name || profile?.name || shortNpub(npub);
   const isSoundCoffeeAccount = pubkey === SOUND_COFFEE_PUBKEY;
+
+  useEffect(() => {
+    fetch("/api/radio-playlist")
+      .then((res) => res.json())
+      .then((data) => setPlaylistEpisodes(data.episodes || []))
+      .catch(() => setPlaylistEpisodes([]));
+  }, []);
+
+  function handlePlayStation() {
+    playStation(
+      playlistEpisodes.map((e) => ({
+        guid: e.guid,
+        title: e.title,
+        audioUrl: e.audioUrl,
+        image: e.image,
+        chaptersUrl: e.chaptersUrl,
+        feedTitle: e.feedName,
+        recipientPubkey: e.recipientPubkey || SOUND_COFFEE_PUBKEY,
+      }))
+    );
+  }
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -69,6 +93,15 @@ export default function Header() {
 
           <div className="flex items-center gap-3">
             <CartButton className="relative text-ink hover:text-rust" />
+
+            {playlistEpisodes.length > 0 && (
+              <button
+                onClick={handlePlayStation}
+                className="border-2 border-jade bg-jade px-3 py-2 font-display text-xs tracking-widest text-ink transition hover:bg-transparent hover:text-jade"
+              >
+                ▶ SC RADIO
+              </button>
+            )}
 
             {restoring ? (
               <div className="h-9 w-24" />
