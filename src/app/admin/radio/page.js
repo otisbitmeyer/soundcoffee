@@ -19,6 +19,7 @@ export default function AdminRadio() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [adding, setAdding] = useState(false);
+  const [addingEpisodeGuid, setAddingEpisodeGuid] = useState(null);
 
   useEffect(() => {
     if (!isRightAccount) return;
@@ -93,6 +94,35 @@ export default function AdminRadio() {
     fetchPodcasts();
   }
 
+  async function handleAddEpisode(episode) {
+    setAddingEpisodeGuid(episode.guid);
+    try {
+      let recipientPubkey = null;
+      if (npubInput.trim()) {
+        recipientPubkey = npubInput.trim().startsWith("npub1")
+          ? nip19.decode(npubInput.trim()).data
+          : npubInput.trim();
+      }
+      await fetch("/api/radio-playlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guid: episode.guid,
+          feedUrl: feedUrlInput.trim(),
+          title: episode.title,
+          audioUrl: episode.audioUrl,
+          image: episode.image || preview.image,
+          chaptersUrl: episode.chaptersUrl,
+          feedName: preview.name,
+          recipientPubkey,
+        }),
+      });
+      await fetchPodcasts(); // the episode's show may now be newly curated too
+    } finally {
+      setAddingEpisodeGuid(null);
+    }
+  }
+
   return (
     <>
       <Header />
@@ -163,9 +193,6 @@ export default function AdminRadio() {
                       )}
                       <div>
                         <p className="font-display text-sm text-ink">{preview.name}</p>
-                        <p className="font-serif text-xs text-ink/50">
-                          {preview.recentEpisodeTitles?.[0]}
-                        </p>
                       </div>
                     </div>
                     <div className="mt-3">
@@ -184,8 +211,33 @@ export default function AdminRadio() {
                       disabled={adding}
                       className="mt-3 w-full border-2 border-ink bg-ink px-4 py-2 font-display text-xs tracking-widest text-paper hover:bg-jade hover:border-jade disabled:opacity-50"
                     >
-                      {adding ? "ADDING…" : "+ ADD TO RADIO FEED"}
+                      {adding ? "ADDING…" : "+ ADD WHOLE SHOW TO RADIO LIST"}
                     </button>
+
+                    {preview.recentEpisodes?.length > 0 && (
+                      <div className="mt-4 border-t border-ink/10 pt-3">
+                        <p className="font-display text-xs tracking-widest text-ink/50">
+                          OR ADD A SPECIFIC EPISODE TO THE FEATURED PLAYLIST
+                        </p>
+                        <p className="mt-1 font-serif text-[11px] italic text-ink/40">
+                          Also adds this show to the general list automatically.
+                        </p>
+                        <div className="mt-2 space-y-1.5">
+                          {preview.recentEpisodes.map((ep) => (
+                            <div key={ep.guid} className="flex items-center justify-between gap-2 border border-ink/10 px-2 py-1.5">
+                              <p className="truncate font-serif text-xs text-ink">{ep.title}</p>
+                              <button
+                                onClick={() => handleAddEpisode(ep)}
+                                disabled={addingEpisodeGuid === ep.guid || !ep.audioUrl}
+                                className="shrink-0 font-display text-[10px] tracking-widest text-jade hover:text-ink disabled:opacity-40"
+                              >
+                                {addingEpisodeGuid === ep.guid ? "…" : "+ ADD"}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

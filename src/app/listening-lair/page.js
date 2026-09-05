@@ -14,8 +14,10 @@ import PwaInstallButton from "@/components/PwaInstallButton";
  * chalkboard, click-to-expand treatment as individual episode titles),
  * expanding to that show's episode list. Fetches its own feed lazily —
  * only once actually expanded — rather than every curated show's full
- * feed loading upfront regardless of whether anyone opens it. */
-function PodcastRow({ name, feedUrl, image, recipientPubkey }) {
+ * feed loading upfront regardless of whether anyone opens it. Name is
+ * uppercase and sized larger than individual episode titles, so the
+ * two levels read as clearly distinct. */
+function PodcastRow({ name, feedUrl, image, recipientPubkey, isOurShow }) {
   const [expanded, setExpanded] = useState(false);
   const { episodes, feedInfo } = usePodcastFeed(expanded ? feedUrl : null);
 
@@ -23,11 +25,16 @@ function PodcastRow({ name, feedUrl, image, recipientPubkey }) {
     <div>
       <button
         onClick={() => setExpanded((e) => !e)}
-        className="w-full px-6 py-5 text-center transition"
+        className="w-full px-6 py-6 text-center transition"
       >
-        <h2 className="font-serif text-2xl tracking-wide text-paper transition hover:text-jade sm:text-3xl">
+        <h2 className="font-serif text-3xl uppercase tracking-wide text-paper transition hover:text-jade sm:text-4xl">
           {name}
         </h2>
+        {isOurShow && (
+          <span className="mt-1 inline-block font-display text-[10px] tracking-widest text-jade">
+            OUR SHOW
+          </span>
+        )}
       </button>
 
       <div
@@ -55,12 +62,18 @@ function PodcastRow({ name, feedUrl, image, recipientPubkey }) {
 
 export default function ListeningLair() {
   const [curatedPodcasts, setCuratedPodcasts] = useState([]);
+  const [playlistEpisodes, setPlaylistEpisodes] = useState([]);
 
   useEffect(() => {
     fetch("/api/radio-podcasts")
       .then((res) => res.json())
       .then((data) => setCuratedPodcasts(data.podcasts || []))
       .catch(() => setCuratedPodcasts([]));
+
+    fetch("/api/radio-playlist")
+      .then((res) => res.json())
+      .then((data) => setPlaylistEpisodes(data.episodes || []))
+      .catch(() => setPlaylistEpisodes([]));
   }, []);
 
   return (
@@ -91,7 +104,33 @@ export default function ListeningLair() {
         </div>
 
         <div className="mx-auto max-w-4xl px-6 py-16">
-          <PodcastRow name="Sound Coffee" feedUrl={MAIN_FEED.url} recipientPubkey={SOUND_COFFEE_PUBKEY} />
+          {playlistEpisodes.length > 0 && (
+            <div className="mb-12">
+              <p className="text-center font-display text-xs tracking-widest text-jade">
+                FEATURED
+              </p>
+              <div className="mt-4">
+                <EpisodeList
+                  episodes={playlistEpisodes.map((e) => ({
+                    guid: e.guid,
+                    title: e.title,
+                    audioUrl: e.audioUrl,
+                    image: e.image,
+                    chaptersUrl: e.chaptersUrl,
+                  }))}
+                  feedTitle="Featured"
+                />
+              </div>
+            </div>
+          )}
+
+          <PodcastRow name="Sound Coffee" feedUrl={MAIN_FEED.url} recipientPubkey={SOUND_COFFEE_PUBKEY} isOurShow />
+
+          {curatedPodcasts.length > 0 && (
+            <p className="mt-10 mb-2 border-t border-paper/10 pt-8 text-center font-display text-xs tracking-widest text-paper/40">
+              FROM THE COMMUNITY
+            </p>
+          )}
           {curatedPodcasts.map((p) => (
             <PodcastRow
               key={p.feedUrl}

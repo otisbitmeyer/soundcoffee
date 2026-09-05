@@ -1367,7 +1367,13 @@ async function handlePreviewRadioFeed(request, env) {
     return jsonResponse({
       name: feedInfo?.title || "Untitled podcast",
       image: feedInfo?.image || null,
-      recentEpisodeTitles: items.slice(0, 3).map((i) => i.title),
+      recentEpisodes: items.slice(0, 5).map((i) => ({
+        guid: i.guid,
+        title: i.title,
+        audioUrl: i.audioUrl || null,
+        chaptersUrl: i.chaptersUrl || null,
+        image: i.image || null,
+      })),
     });
   } catch (e) {
     return jsonResponse({ error: e.message }, 502);
@@ -1407,6 +1413,66 @@ async function handleRemoveRadioPodcast(request, env) {
   const { feedUrl } = await request.json();
   if (!feedUrl) return jsonResponse({ error: "Missing feedUrl." }, 422);
   await env.DB.prepare(`DELETE FROM radio_podcasts WHERE feed_url = ?`).bind(feedUrl).run();
+  return jsonResponse({ ok: true });
+}
+
+/**
+ * Adds one specific episode to the featured playlist — and, per the
+ * explicit requirement, also adds its parent show to radio_podcasts
+ * if it isn't already curated there, so the full show becomes
+ * browsable too, not just this one episode.
+ */
+async function handleAddPlaylistEpisode(request, env) {
+  const { guid, feedUrl, title, audioUrl, image, chaptersUrl, feedName, recipientPubkey } =
+    await request.json();
+  if (!guid || !feedUrl || !title) {
+    return jsonResponse({ error: "Missing guid, feedUrl, or title." }, 422);
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO radio_playlist_episodes (guid, feed_url, title, audio_url, image, chapters_url, feed_name, recipient_pubkey, added_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(guid) DO UPDATE SET title = excluded.title, audio_url = excluded.audio_url, image = excluded.image, chapters_url = excluded.chapters_url`
+  )
+    .bind(guid, feedUrl, title, audioUrl || null, image || null, chaptersUrl || null, feedName || null, recipientPubkey || null, Date.now())
+    .run();
+
+  const existingShow = await env.DB.prepare(`SELECT feed_url FROM radio_podcasts WHERE feed_url = ?`)
+    .bind(feedUrl)
+    .first();
+  if (!existingShow) {
+    await env.DB.prepare(
+      `INSERT INTO radio_podcasts (feed_url, name, recipient_pubkey, image, added_at) VALUES (?, ?, ?, ?, ?)`
+    )
+      .bind(feedUrl, feedName || "Untitled podcast", recipientPubkey || null, image || null, Date.now())
+      .run();
+  }
+
+  return jsonResponse({ ok: true });
+}
+
+async function handleListPlaylistEpisodes(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM radio_playlist_episodes ORDER BY added_at DESC`
+  ).all();
+  return jsonResponse({
+    episodes: results.map((e) => ({
+      guid: e.guid,
+      feedUrl: e.feed_url,
+      title: e.title,
+      audioUrl: e.audio_url,
+      image: e.image,
+      chaptersUrl: e.chapters_url,
+      feedName: e.feed_name,
+      recipientPubkey: e.recipient_pubkey,
+    })),
+  });
+}
+
+async function handleRemovePlaylistEpisode(request, env) {
+  const { guid } = await request.json();
+  if (!guid) return jsonResponse({ error: "Missing guid." }, 422);
+  await env.DB.prepare(`DELETE FROM radio_playlist_episodes WHERE guid = ?`).bind(guid).run();
   return jsonResponse({ ok: true });
 }
 
@@ -1670,6 +1736,15 @@ async function handleFetch(request, env) {
   }
   if (request.method === "POST" && url.pathname === "/api/radio-podcasts/remove") {
     return handleRemoveRadioPodcast(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/radio-playlist") {
+    return handleAddPlaylistEpisode(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/radio-playlist") {
+    return handleListPlaylistEpisodes(env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/radio-playlist/remove") {
+    return handleRemovePlaylistEpisode(request, env);
   }
   if (request.method === "GET" && url.pathname === "/api/club-members") {
     return handleClubMembers(env);
