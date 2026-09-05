@@ -15,6 +15,11 @@ const STORAGE_KEY = "sound-coffee-radio-queue";
 export function PlayerProvider({ children }) {
   const [queue, setQueue] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(-1); // -1 = nothing loaded yet
+  // Distinguishes "the whole featured playlist is playing" from "a
+  // single episode was played individually" — same queue mechanism
+  // either way, but the player's playlist-view button should only
+  // ever appear for the former.
+  const [isStationQueue, setIsStationQueue] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -73,6 +78,7 @@ export function PlayerProvider({ children }) {
     setQueue([]);
     setCurrentIndex(-1);
     setIsPlaying(false);
+    setIsStationQueue(false);
   }, []);
 
   /** Replaces the entire queue with a fresh list of tracks and starts
@@ -84,6 +90,7 @@ export function PlayerProvider({ children }) {
     setQueue(tracks);
     setCurrentIndex(0);
     setIsPlaying(true);
+    setIsStationQueue(true);
   }, []);
 
   /** Plays a track immediately — adds it to the queue if it isn't
@@ -99,6 +106,17 @@ export function PlayerProvider({ children }) {
       setCurrentIndex(prev.length);
       return [...prev, track];
     });
+    setIsPlaying(true);
+    setIsStationQueue(false); // a single deliberately-chosen episode, not "the playlist"
+  }, []);
+
+  /** Jumps to a specific track already in the queue by its index —
+   * for selecting from the playlist dropdown while the station is
+   * playing. Distinct from playTrack, which deliberately marks the
+   * choice as a single separate episode rather than "still the
+   * station" — this preserves isStationQueue instead of resetting it. */
+  const jumpToIndex = useCallback((index) => {
+    setCurrentIndex(index);
     setIsPlaying(true);
   }, []);
 
@@ -183,6 +201,7 @@ export function PlayerProvider({ children }) {
         queue,
         currentTrack,
         currentIndex,
+        isStationQueue,
         isPlaying,
         currentTime,
         duration,
@@ -191,6 +210,7 @@ export function PlayerProvider({ children }) {
         clearQueue,
         playStation,
         playTrack,
+        jumpToIndex,
         playNext,
         playPrevious,
         togglePlayPause,

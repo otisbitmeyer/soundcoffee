@@ -28,33 +28,38 @@ export default function PlayerBar() {
     currentTrack,
     queue,
     currentIndex,
+    isStationQueue,
     isPlaying,
     currentTime,
     duration,
     togglePlayPause,
     playNext,
     playPrevious,
+    jumpToIndex,
     seek,
   } = usePlayer();
 
   const [chaptersOpen, setChaptersOpen] = useState(false);
+  const [playlistOpen, setPlaylistOpen] = useState(false);
   const chaptersDropdownRef = useRef(null);
   const chaptersButtonRef = useRef(null);
+  const playlistDropdownRef = useRef(null);
+  const playlistButtonRef = useRef(null);
 
   useEffect(() => {
-    if (!chaptersOpen) return;
+    if (!chaptersOpen && !playlistOpen) return;
     function handleClickOutside(e) {
-      if (
-        chaptersDropdownRef.current?.contains(e.target) ||
-        chaptersButtonRef.current?.contains(e.target)
-      ) {
-        return; // click was on the dropdown itself or its own toggle button
-      }
+      const insideChapters =
+        chaptersDropdownRef.current?.contains(e.target) || chaptersButtonRef.current?.contains(e.target);
+      const insidePlaylist =
+        playlistDropdownRef.current?.contains(e.target) || playlistButtonRef.current?.contains(e.target);
+      if (insideChapters || insidePlaylist) return;
       setChaptersOpen(false);
+      setPlaylistOpen(false);
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [chaptersOpen]);
+  }, [chaptersOpen, playlistOpen]);
   // Only fetch a note/chapters at all once there's actually a track loaded —
   // hooks still need to be called unconditionally, so guard the argument
   // instead of the call itself.
@@ -71,7 +76,13 @@ export default function PlayerBar() {
 
   function toggleChapters() {
     if (!chaptersOpen) loadChapters();
+    setPlaylistOpen(false);
     setChaptersOpen((o) => !o);
+  }
+
+  function togglePlaylist() {
+    setChaptersOpen(false);
+    setPlaylistOpen((o) => !o);
   }
 
   function skip(deltaSeconds) {
@@ -80,6 +91,29 @@ export default function PlayerBar() {
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-[130] border-t-2 border-ink bg-ink text-paper">
+      {playlistOpen && (
+        <div ref={playlistDropdownRef} className="max-h-64 overflow-y-auto border-b border-paper/20 px-4 py-3 sm:px-6">
+          <ul className="space-y-1.5">
+            {queue.map((track, i) => (
+              <li key={track.guid}>
+                <button
+                  onClick={() => {
+                    jumpToIndex(i);
+                    setPlaylistOpen(false);
+                  }}
+                  className={`flex w-full items-center gap-2 text-left font-serif text-sm transition ${
+                    i === currentIndex ? "text-jade" : "text-paper/80 hover:text-jade"
+                  }`}
+                >
+                  {i === currentIndex && <span className="shrink-0">▸</span>}
+                  <span className="truncate">{track.title}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {chaptersOpen && (
         <div ref={chaptersDropdownRef} className="max-h-64 overflow-y-auto border-b border-paper/20 px-4 py-3 sm:px-6">
           {chaptersLoading && (
@@ -193,6 +227,19 @@ export default function PlayerBar() {
         </div>
 
         <div className="flex shrink-0 items-center gap-2 border-l border-paper/20 pl-3 sm:gap-3">
+          {isStationQueue && (
+            <button
+              ref={playlistButtonRef}
+              onClick={togglePlaylist}
+              aria-label="Playlist"
+              title="Playlist"
+              className={`font-display text-xs tracking-widest transition ${
+                playlistOpen ? "text-jade" : "text-paper/60 hover:text-jade"
+              }`}
+            >
+              PLAYLIST
+            </button>
+          )}
           {currentTrack.chaptersUrl && (
             <button
               ref={chaptersButtonRef}

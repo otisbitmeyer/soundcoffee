@@ -124,30 +124,16 @@ export default function ListeningLair() {
 
         <div className="mx-auto max-w-4xl px-6 py-16">
           {playlistEpisodes.length > 0 && (
-            <div className="mb-12">
-              <div className="text-center">
-                <p className="font-display text-xs tracking-widest text-jade">
-                  FEATURED
-                </p>
-                <button
-                  onClick={handlePlayStation}
-                  className="mt-3 border-2 border-jade bg-jade px-6 py-3 font-display text-sm tracking-widest text-ink transition hover:bg-transparent hover:text-jade"
-                >
-                  ▶ PLAY RADIO STATION
-                </button>
-              </div>
-              <div className="mt-4">
-                <EpisodeList
-                  episodes={playlistEpisodes.map((e) => ({
-                    guid: e.guid,
-                    title: e.title,
-                    audioUrl: e.audioUrl,
-                    image: e.image,
-                    chaptersUrl: e.chaptersUrl,
-                  }))}
-                  feedTitle="Featured"
-                />
-              </div>
+            <div className="mb-12 text-center">
+              <p className="font-display text-xs tracking-widest text-jade">
+                FEATURED
+              </p>
+              <button
+                onClick={handlePlayStation}
+                className="mt-3 border-2 border-jade bg-jade px-6 py-3 font-display text-sm tracking-widest text-ink transition hover:bg-transparent hover:text-jade"
+              >
+                ▶ PLAY RADIO STATION
+              </button>
             </div>
           )}
 
