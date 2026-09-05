@@ -81,6 +81,7 @@ export default function CheckoutModal({ onClose }) {
   const [status, setStatus] = useState("form"); // form | working | invoice | done | error
   const [error, setError] = useState("");
   const [invoice, setInvoice] = useState(null);
+  const [verifyUrlForPolling, setVerifyUrlForPolling] = useState(null);
   const [qrDataUrl, setQrDataUrl] = useState(null);
   const [orderId, setOrderId] = useState(null);
   const [brantaLink, setBrantaLink] = useState(null);
@@ -312,7 +313,10 @@ export default function CheckoutModal({ onClose }) {
       setStatus("error");
       return;
     }
-    if (!totalSats) {
+    // A real zero (from a 100%-off discount, or a listing genuinely
+    // priced at 0) is legitimate — only actually-missing pricing
+    // (null/undefined) should block checkout here.
+    if (totalSats == null) {
       setError("Something in your cart isn't priced correctly, so checkout isn't available right now.");
       setStatus("error");
       return;
@@ -322,12 +326,15 @@ export default function CheckoutModal({ onClose }) {
       setStatus("error");
       return;
     }
-    if (paymentMethod === "lightning" && !sellerProfile?.lud16) {
+    // A free order has nothing to actually pay, so it doesn't need a
+    // Lightning address at all — this only matters when there's a
+    // real amount to send.
+    if (paymentMethod === "lightning" && finalTotalSats > 0 && !sellerProfile?.lud16) {
       setError("The seller doesn't have a Lightning address set up yet.");
       setStatus("error");
       return;
     }
-    if (paymentMethod === "card" && !totalUsdCents) {
+    if (paymentMethod === "card" && totalUsdCents == null) {
       setError("Couldn't determine a USD price for card payment right now — try again in a moment.");
       setStatus("error");
       return;
@@ -558,6 +565,7 @@ export default function CheckoutModal({ onClose }) {
       const qr = await QRCode.toDataURL(pr.toUpperCase(), { margin: 1, width: 320 });
 
       setInvoice(pr);
+      setVerifyUrlForPolling(verify || null);
       setQrDataUrl(qr);
       setStatus("invoice");
       clearCart(); // order's placed and awaiting payment — cart's job is done
@@ -579,6 +587,36 @@ export default function CheckoutModal({ onClose }) {
       submittingRef.current = false;
     }
   }
+
+  // Polls the LUD-21 verify URL directly from the browser — this is
+  // exactly what it's designed for, and gives a much faster result
+  // than waiting on our own backend's cron (which only runs every few
+  // minutes and doesn't push anything back to this open tab anyway).
+  // Stops as soon as settlement is detected, on unmount, or if the
+  // invoice screen is left.
+  useEffect(() => {
+    if (status !== "invoice" || !verifyUrlForPolling) return;
+    let cancelled = false;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(verifyUrlForPolling);
+        const data = await res.json();
+        if (!cancelled && data.settled) {
+          clearInterval(interval);
+          handleConfirmPaid();
+        }
+      } catch {
+        // provider unreachable this check — try again next interval
+      }
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, verifyUrlForPolling]);
 
   async function handleConfirmPaid() {
     setStatus("working");
@@ -831,7 +869,7 @@ export default function CheckoutModal({ onClose }) {
                 )}
               </div>
 
-              {totalSats && (
+              {totalSats != null && (
                 <div className="border-y-2 border-ink py-3 text-center">
                   {appliedDiscount && (
                     <p className="font-serif text-sm text-ink/40 line-through">
@@ -872,14 +910,14 @@ export default function CheckoutModal({ onClose }) {
                 <div className="space-y-2">
                   <button
                     onClick={() => handlePlaceOrder("lightning")}
-                    disabled={!totalSats}
+                    disabled={totalSats == null}
                     className="w-full border-2 border-ink bg-ink px-4 py-3 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust disabled:opacity-50"
                   >
                     {`⚡ PAY WITH LIGHTNING${finalTotalSats != null ? ` (${finalTotalSats.toLocaleString()} sats)` : ""}`}
                   </button>
                   <button
                     onClick={() => handlePlaceOrder("card")}
-                    disabled={!totalUsdCents}
+                    disabled={totalUsdCents == null}
                     className="w-full border-2 border-ink px-4 py-3 font-display text-sm tracking-widest text-ink transition hover:border-jade hover:text-jade disabled:opacity-50"
                   >
                     {`💳 PAY WITH CARD${finalTotalUsdCents != null ? ` ($${(finalTotalUsdCents / 100).toFixed(2)})` : ""}`}
