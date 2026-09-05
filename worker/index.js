@@ -326,7 +326,7 @@ function renderOrderEmailHtml({ heading, intro, rows, ctaText, ctaUrl }) {
             <td style="background-color:#141311;padding:16px 24px;">
               <table role="presentation" cellpadding="0" cellspacing="0"><tr>
                 <td style="vertical-align:middle;padding-right:10px;">
-                  <img src="https://soundcoffee.org/logo-mark.png" width="28" height="29" alt="Sound Coffee" style="display:block;">
+                  <img src="https://soundcoffee.org/logo-mark-white.png" width="28" height="29" alt="Sound Coffee" style="display:block;">
                 </td>
                 <td style="vertical-align:middle;">
                   <span style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:2px;color:#faf6ee;">SOUND COFFEE</span>
