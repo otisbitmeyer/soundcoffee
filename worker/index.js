@@ -422,6 +422,18 @@ async function handleNotifyOrderDetected(request, env) {
       ]
         .filter(Boolean)
         .join("\n"),
+      html: renderOrderEmailHtml({
+        heading: "New order detected",
+        intro: "Found on the orders dashboard, not placed through checkout directly.",
+        rows: [
+          { label: "ORDER ID", value: orderId },
+          { label: "SOURCE", value: source || "Unknown" },
+          { label: "AMOUNT", value: amountLine },
+          { label: "PAYMENT METHOD", value: paymentMethod || "unknown" },
+          { label: "ITEM", value: itemSummary },
+          { label: "BUYER", value: buyerInfo },
+        ],
+      }),
     });
     await env.SOUND_COFFEE_KV.put(dedupKey, "1", { expirationTtl: 60 * 60 * 24 * 180 });
     return jsonResponse({ ok: true, sent: true });
@@ -528,6 +540,16 @@ async function handleNotifyShipped(request, env) {
       to: buyerEmail,
       subject: `Your Sound Coffee order has shipped! (${orderId})`,
       text: `Good news — your order${itemTitle ? ` for ${itemTitle}` : ""} is on its way.${trackingLine}`,
+      html: renderOrderEmailHtml({
+        heading: "Your order has shipped!",
+        intro: "Good news — it's on its way.",
+        rows: [
+          { label: "ORDER ID", value: orderId },
+          { label: "ITEM", value: itemTitle },
+          { label: "TRACKING", value: trackingNumber },
+          { label: "CARRIER", value: carrier },
+        ],
+      }),
     });
     return jsonResponse({ ok: true, sent: true });
   } catch (e) {

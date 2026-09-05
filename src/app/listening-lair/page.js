@@ -5,10 +5,10 @@ import Image from "next/image";
 import Header from "@/components/Header";
 import EpisodeList from "@/components/EpisodeList";
 import ZapButton from "@/components/ZapButton";
+import Footer from "@/components/Footer";
 import { usePodcastFeed } from "@/hooks/usePodcastFeed";
 import { MAIN_FEED } from "@/lib/podcastFeeds";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
-import PwaInstallButton from "@/components/PwaInstallButton";
 
 /** One row per podcast — collapsed to just its name (matching the same
  * chalkboard, click-to-expand treatment as individual episode titles),
@@ -143,21 +143,7 @@ export default function ListeningLair() {
         </div>
       </main>
 
-      <footer className="bg-paper">
-        <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-6 py-12 text-center">
-          <Image
-            src="/logo-mark.png"
-            alt="Sound Coffee"
-            width={578}
-            height={609}
-            className="h-auto w-16"
-          />
-          <p className="font-display text-xs tracking-widest text-ink/50">
-            SOUND COFFEE &mdash; BUILT ON NOSTR
-          </p>
-          <PwaInstallButton />
-        </div>
-      </footer>
+      <Footer />
     </>
   );
 }

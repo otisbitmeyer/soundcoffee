@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Header from "@/components/Header";
-import PwaInstallButton from "@/components/PwaInstallButton";
+import Footer from "@/components/Footer";
 
 export default function Home() {
   return (
@@ -40,22 +40,7 @@ export default function Home() {
         </section>
       </main>
 
-      {/* ---------- FOOTER ---------- */}
-      <footer className="bg-paper">
-        <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-6 py-12 text-center">
-          <Image
-            src="/logo-mark.png"
-            alt="Sound Coffee"
-            width={40}
-            height={41}
-            className="h-10 w-auto"
-          />
-          <p className="font-display text-xs tracking-widest text-ink/50">
-            SOUND COFFEE &mdash; BUILT ON NOSTR
-          </p>
-          <PwaInstallButton />
-        </div>
-      </footer>
+      <Footer />
     </>
   );
 }

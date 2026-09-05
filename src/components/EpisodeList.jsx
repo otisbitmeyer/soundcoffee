@@ -85,7 +85,7 @@ function EpisodeCard({ episode, showImage, feedTitle, recipientPubkey }) {
   const { noteId, loading: noteLoading, refresh: refreshNote } = useEpisodeNote(episode.guid);
   const { chapters, loading: chaptersLoading, load: loadChapters } = useChapters(episode.chaptersUrl);
   const { pubkey, signEvent } = useAuth();
-  const { currentTrack, isPlaying, playTrack, togglePlayPause, seekToChapter, addToQueue } = usePlayer();
+  const { currentTrack, isPlaying, playTrack, togglePlayPause, seekToChapter } = usePlayer();
   const isSoundCoffeeAccount = pubkey === SOUND_COFFEE_PUBKEY;
 
   const showNotes = stripHtml(episode.description);
@@ -164,22 +164,12 @@ function EpisodeCard({ episode, showImage, feedTitle, recipientPubkey }) {
 
             <div className="flex shrink-0 flex-col items-end gap-2">
               {episode.audioUrl ? (
-                <div className="flex gap-1.5">
-                  <button
-                    onClick={handleListenClick}
-                    className="border-2 border-paper/50 px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:border-jade hover:text-jade"
-                  >
-                    {isThisPlaying ? "PAUSE" : "LISTEN ▸"}
-                  </button>
-                  <button
-                    onClick={() => addToQueue(track)}
-                    title="Add to queue"
-                    aria-label="Add to queue"
-                    className="border-2 border-paper/50 px-3 py-2 font-display text-sm text-paper transition hover:border-jade hover:text-jade"
-                  >
-                    +
-                  </button>
-                </div>
+                <button
+                  onClick={handleListenClick}
+                  className="border-2 border-paper/50 px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:border-jade hover:text-jade"
+                >
+                  {isThisPlaying ? "PAUSE" : "LISTEN ▸"}
+                </button>
               ) : (
                 <a
                   href={episode.link}
