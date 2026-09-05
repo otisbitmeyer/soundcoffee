@@ -236,6 +236,16 @@ export default function CheckoutModal({ onClose }) {
         usdCents: usdCents != null ? Math.max(0, Math.round(usdCents * factor)) : usdCents,
       };
     }
+    if (appliedDiscount.discountType === "flat_sats") {
+      const discountSats = appliedDiscount.discountValue;
+      const discountCents = btcUsdPrice
+        ? Math.round((discountSats / 100_000_000) * btcUsdPrice * 100)
+        : 0;
+      return {
+        sats: Math.max(0, sats - discountSats),
+        usdCents: usdCents != null ? Math.max(0, usdCents - discountCents) : usdCents,
+      };
+    }
     // flat_usd
     const discountCents = Math.round(appliedDiscount.discountValue * 100);
     const discountSats = btcUsdPrice
@@ -787,6 +797,8 @@ export default function CheckoutModal({ onClose }) {
                       {appliedDiscount.code} applied &mdash;{" "}
                       {appliedDiscount.discountType === "percent"
                         ? `${appliedDiscount.discountValue}% off`
+                        : appliedDiscount.discountType === "flat_sats"
+                        ? `${appliedDiscount.discountValue} sats off`
                         : `$${appliedDiscount.discountValue} off`}
                     </p>
                     <button

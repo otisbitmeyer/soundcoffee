@@ -32,7 +32,7 @@ function PodcastRow({ name, feedUrl, image, recipientPubkey, isOurShow }) {
         onClick={() => setExpanded((e) => !e)}
         className="w-full px-6 py-6 text-center transition"
       >
-        <h2 className="font-serif text-3xl uppercase tracking-wide text-paper transition hover:text-jade sm:text-4xl">
+        <h2 className="font-serif text-3xl uppercase leading-snug tracking-wide text-paper transition hover:text-jade sm:text-4xl">
           {name}
         </h2>
       </button>
@@ -54,7 +54,7 @@ function PodcastRow({ name, feedUrl, image, recipientPubkey, isOurShow }) {
           expanded ? "max-h-[6000px] opacity-100" : "max-h-0 opacity-0"
         }`}
       >
-        <div className="border-t border-paper/10 px-6 py-6">
+        <div className="border-t border-l-2 border-paper/10 border-l-jade/40 bg-paper/5 px-6 py-6">
           {episodes ? (
             <EpisodeList
               episodes={episodes}

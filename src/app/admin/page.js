@@ -374,6 +374,7 @@ export default function AdminPage() {
                       >
                         <option value="percent">% off</option>
                         <option value="flat_usd">$ off</option>
+                        <option value="flat_sats">sats off</option>
                       </select>
                       <input
                         value={newValue}
@@ -422,7 +423,11 @@ export default function AdminPage() {
                           <p className="font-mono text-sm text-ink">
                             {d.code}{" "}
                             <span className="font-serif text-xs text-ink/60">
-                              — {d.discount_type === "percent" ? `${d.discount_value}% off` : `$${d.discount_value} off`}
+                              — {d.discount_type === "percent"
+                                ? `${d.discount_value}% off`
+                                : d.discount_type === "flat_sats"
+                                ? `${d.discount_value} sats off`
+                                : `$${d.discount_value} off`}
                               {d.allowedNpubs?.length > 0 && ` · ${d.allowedNpubs.length} npub${d.allowedNpubs.length === 1 ? "" : "s"} only`}
                               {" · used "}{d.uses_count}{" time"}{d.uses_count === 1 ? "" : "s"}
                             </span>

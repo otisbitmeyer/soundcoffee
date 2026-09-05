@@ -1157,8 +1157,8 @@ async function handleCreateDiscount(request, env) {
   if (!code || !discountType || discountValue == null) {
     return jsonResponse({ error: "Missing code, discountType, or discountValue." }, 422);
   }
-  if (discountType !== "percent" && discountType !== "flat_usd") {
-    return jsonResponse({ error: "discountType must be 'percent' or 'flat_usd'." }, 422);
+  if (discountType !== "percent" && discountType !== "flat_usd" && discountType !== "flat_sats") {
+    return jsonResponse({ error: "discountType must be 'percent', 'flat_usd', or 'flat_sats'." }, 422);
   }
 
   const normalizedCode = code.trim().toUpperCase();
