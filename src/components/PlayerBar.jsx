@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { usePlayer } from "@/context/PlayerContext";
 import { useEpisodeNote } from "@/hooks/useEpisodeNote";
 import { useChapters } from "@/hooks/useChapters";
@@ -38,6 +38,23 @@ export default function PlayerBar() {
   } = usePlayer();
 
   const [chaptersOpen, setChaptersOpen] = useState(false);
+  const chaptersDropdownRef = useRef(null);
+  const chaptersButtonRef = useRef(null);
+
+  useEffect(() => {
+    if (!chaptersOpen) return;
+    function handleClickOutside(e) {
+      if (
+        chaptersDropdownRef.current?.contains(e.target) ||
+        chaptersButtonRef.current?.contains(e.target)
+      ) {
+        return; // click was on the dropdown itself or its own toggle button
+      }
+      setChaptersOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [chaptersOpen]);
   // Only fetch a note/chapters at all once there's actually a track loaded —
   // hooks still need to be called unconditionally, so guard the argument
   // instead of the call itself.
@@ -64,7 +81,7 @@ export default function PlayerBar() {
   return (
     <div className="fixed inset-x-0 bottom-0 z-[130] border-t-2 border-ink bg-ink text-paper">
       {chaptersOpen && (
-        <div className="max-h-64 overflow-y-auto border-b border-paper/20 px-4 py-3 sm:px-6">
+        <div ref={chaptersDropdownRef} className="max-h-64 overflow-y-auto border-b border-paper/20 px-4 py-3 sm:px-6">
           {chaptersLoading && (
             <p className="font-serif text-xs text-paper/50">Loading chapters…</p>
           )}
@@ -178,6 +195,7 @@ export default function PlayerBar() {
         <div className="flex shrink-0 items-center gap-2 border-l border-paper/20 pl-3 sm:gap-3">
           {currentTrack.chaptersUrl && (
             <button
+              ref={chaptersButtonRef}
               onClick={toggleChapters}
               aria-label="Chapters"
               title="Chapters"

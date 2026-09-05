@@ -1455,29 +1455,35 @@ async function handleRemoveRadioPodcast(request, env) {
  * browsable too, not just this one episode.
  */
 async function handleAddPlaylistEpisode(request, env) {
-  const { guid, feedUrl, title, audioUrl, image, chaptersUrl, feedName, recipientPubkey } =
+  const { guid, feedUrl, title, audioUrl, image, chaptersUrl, feedName, recipientPubkey, trackType } =
     await request.json();
   if (!guid || !feedUrl || !title) {
     return jsonResponse({ error: "Missing guid, feedUrl, or title." }, 422);
   }
+  const type = trackType === "music_track" ? "music_track" : "podcast_episode";
 
   await env.DB.prepare(
-    `INSERT INTO radio_playlist_episodes (guid, feed_url, title, audio_url, image, chapters_url, feed_name, recipient_pubkey, added_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO radio_playlist_episodes (guid, feed_url, title, audio_url, image, chapters_url, feed_name, recipient_pubkey, track_type, added_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(guid) DO UPDATE SET title = excluded.title, audio_url = excluded.audio_url, image = excluded.image, chapters_url = excluded.chapters_url`
   )
-    .bind(guid, feedUrl, title, audioUrl || null, image || null, chaptersUrl || null, feedName || null, recipientPubkey || null, Date.now())
+    .bind(guid, feedUrl, title, audioUrl || null, image || null, chaptersUrl || null, feedName || null, recipientPubkey || null, type, Date.now())
     .run();
 
-  const existingShow = await env.DB.prepare(`SELECT feed_url FROM radio_podcasts WHERE feed_url = ?`)
-    .bind(feedUrl)
-    .first();
-  if (!existingShow) {
-    await env.DB.prepare(
-      `INSERT INTO radio_podcasts (feed_url, name, recipient_pubkey, image, added_at) VALUES (?, ?, ?, ?, ?)`
-    )
-      .bind(feedUrl, feedName || "Untitled podcast", recipientPubkey || null, image || null, Date.now())
-      .run();
+  // Music tracks deliberately never curate their parent show into the
+  // browsable podcast list — a music feed isn't "a podcast" in that
+  // sense, and shouldn't show up in Listening Lair's podcast list.
+  if (type === "podcast_episode") {
+    const existingShow = await env.DB.prepare(`SELECT feed_url FROM radio_podcasts WHERE feed_url = ?`)
+      .bind(feedUrl)
+      .first();
+    if (!existingShow) {
+      await env.DB.prepare(
+        `INSERT INTO radio_podcasts (feed_url, name, recipient_pubkey, image, added_at) VALUES (?, ?, ?, ?, ?)`
+      )
+        .bind(feedUrl, feedName || "Untitled podcast", recipientPubkey || null, image || null, Date.now())
+        .run();
+    }
   }
 
   return jsonResponse({ ok: true });
@@ -1497,6 +1503,7 @@ async function handleListPlaylistEpisodes(env) {
       chaptersUrl: e.chapters_url,
       feedName: e.feed_name,
       recipientPubkey: e.recipient_pubkey,
+      trackType: e.track_type,
     })),
   });
 }

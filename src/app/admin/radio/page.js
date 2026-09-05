@@ -13,6 +13,7 @@ export default function AdminRadio() {
   const isRightAccount = pubkey === SOUND_COFFEE_PUBKEY;
 
   const [podcasts, setPodcasts] = useState(null);
+  const [playlist, setPlaylist] = useState(null);
   const [feedUrlInput, setFeedUrlInput] = useState("");
   const [npubInput, setNpubInput] = useState("");
   const [preview, setPreview] = useState(null);
@@ -24,7 +25,27 @@ export default function AdminRadio() {
   useEffect(() => {
     if (!isRightAccount) return;
     fetchPodcasts();
+    fetchPlaylist();
   }, [isRightAccount]);
+
+  async function fetchPlaylist() {
+    try {
+      const res = await fetch("/api/radio-playlist");
+      const data = await res.json();
+      setPlaylist(data.episodes || []);
+    } catch {
+      setPlaylist([]);
+    }
+  }
+
+  async function handleRemoveFromPlaylist(guid) {
+    await fetch("/api/radio-playlist/remove", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ guid }),
+    });
+    fetchPlaylist();
+  }
 
   async function fetchPodcasts() {
     try {
@@ -94,7 +115,7 @@ export default function AdminRadio() {
     fetchPodcasts();
   }
 
-  async function handleAddEpisode(episode) {
+  async function handleAddEpisode(episode, trackType) {
     setAddingEpisodeGuid(episode.guid);
     try {
       let recipientPubkey = null;
@@ -115,9 +136,11 @@ export default function AdminRadio() {
           chaptersUrl: episode.chaptersUrl,
           feedName: preview.name,
           recipientPubkey,
+          trackType,
         }),
       });
-      await fetchPodcasts(); // the episode's show may now be newly curated too
+      await fetchPodcasts(); // the episode's show may now be newly curated too (unless it was added as music)
+      await fetchPlaylist();
     } finally {
       setAddingEpisodeGuid(null);
     }
@@ -217,22 +240,34 @@ export default function AdminRadio() {
                     {preview.recentEpisodes?.length > 0 && (
                       <div className="mt-4 border-t border-ink/10 pt-3">
                         <p className="font-display text-xs tracking-widest text-ink/50">
-                          OR ADD A SPECIFIC EPISODE TO THE FEATURED PLAYLIST
+                          OR ADD SPECIFIC TRACKS TO THE FEATURED PLAYLIST
                         </p>
                         <p className="mt-1 font-serif text-[11px] italic text-ink/40">
-                          Also adds this show to the general list automatically.
+                          &ldquo;ADD&rdquo; also curates this show into the general
+                          podcast list automatically. &ldquo;MUSIC&rdquo; never does —
+                          for V4V music feeds that shouldn&rsquo;t show up as a
+                          browsable podcast.
                         </p>
                         <div className="mt-2 space-y-1.5">
                           {preview.recentEpisodes.map((ep) => (
                             <div key={ep.guid} className="flex items-center justify-between gap-2 border border-ink/10 px-2 py-1.5">
                               <p className="truncate font-serif text-xs text-ink">{ep.title}</p>
-                              <button
-                                onClick={() => handleAddEpisode(ep)}
-                                disabled={addingEpisodeGuid === ep.guid || !ep.audioUrl}
-                                className="shrink-0 font-display text-[10px] tracking-widest text-jade hover:text-ink disabled:opacity-40"
-                              >
-                                {addingEpisodeGuid === ep.guid ? "…" : "+ ADD"}
-                              </button>
+                              <div className="flex shrink-0 gap-2">
+                                <button
+                                  onClick={() => handleAddEpisode(ep, "podcast_episode")}
+                                  disabled={addingEpisodeGuid === ep.guid || !ep.audioUrl}
+                                  className="font-display text-[10px] tracking-widest text-jade hover:text-ink disabled:opacity-40"
+                                >
+                                  {addingEpisodeGuid === ep.guid ? "…" : "+ ADD"}
+                                </button>
+                                <button
+                                  onClick={() => handleAddEpisode(ep, "music_track")}
+                                  disabled={addingEpisodeGuid === ep.guid || !ep.audioUrl}
+                                  className="font-display text-[10px] tracking-widest text-rust hover:text-ink disabled:opacity-40"
+                                >
+                                  + MUSIC
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -274,6 +309,48 @@ export default function AdminRadio() {
                       </div>
                       <button
                         onClick={() => handleRemove(p.feedUrl)}
+                        className="font-display text-xs tracking-widest text-rust hover:text-ink"
+                      >
+                        REMOVE
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-6">
+                <p className="font-display text-sm text-ink">Featured playlist</p>
+                <div className="mt-2 space-y-2">
+                  {playlist === null && (
+                    <p className="font-serif text-xs italic text-ink/40">Loading…</p>
+                  )}
+                  {playlist?.length === 0 && (
+                    <p className="font-serif text-xs italic text-ink/40">
+                      Nothing featured yet.
+                    </p>
+                  )}
+                  {playlist?.map((e) => (
+                    <div
+                      key={e.guid}
+                      className="flex items-center justify-between border border-ink/15 px-3 py-2"
+                    >
+                      <div className="flex items-center gap-3">
+                        {e.image && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={e.image} alt="" className="h-8 w-8 border border-ink/20 object-cover" />
+                        )}
+                        <div>
+                          <p className="font-serif text-sm text-ink">{e.title}</p>
+                          <p className="font-display text-[10px] tracking-widest text-ink/40">
+                            {e.feedName}
+                            {e.trackType === "music_track" && (
+                              <span className="ml-2 text-rust">MUSIC</span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveFromPlaylist(e.guid)}
                         className="font-display text-xs tracking-widest text-rust hover:text-ink"
                       >
                         REMOVE

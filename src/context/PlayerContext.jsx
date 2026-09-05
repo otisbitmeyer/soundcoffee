@@ -75,6 +75,17 @@ export function PlayerProvider({ children }) {
     setIsPlaying(false);
   }, []);
 
+  /** Replaces the entire queue with a fresh list of tracks and starts
+   * playing from the first one — the actual "press play on the
+   * station" mechanism, distinct from addToQueue (which appends one
+   * track without disturbing whatever's already queued). */
+  const playStation = useCallback((tracks) => {
+    if (!tracks || tracks.length === 0) return;
+    setQueue(tracks);
+    setCurrentIndex(0);
+    setIsPlaying(true);
+  }, []);
+
   /** Plays a track immediately — adds it to the queue if it isn't
    * already there, then jumps playback to it. This is how a single
    * "play this episode" click works, same as picking from a queue. */
@@ -178,6 +189,7 @@ export function PlayerProvider({ children }) {
         addToQueue,
         removeFromQueue,
         clearQueue,
+        playStation,
         playTrack,
         playNext,
         playPrevious,
