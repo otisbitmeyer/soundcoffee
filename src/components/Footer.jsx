@@ -21,6 +21,14 @@ export default function Footer() {
         >
           SEND AN EMAIL
         </a>
+        <a
+          href="https://njump.me/npub186pzq2z7xjma6gsjkm4kyeyvfck0lk4t9a6qmtht2pq9axyr73wshad0rk"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-display text-sm tracking-widest text-ink transition hover:text-jade"
+        >
+          CONNECT ON NOSTR
+        </a>
         <PwaInstallButton />
       </div>
     </footer>

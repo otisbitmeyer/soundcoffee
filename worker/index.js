@@ -323,8 +323,15 @@ function renderOrderEmailHtml({ heading, intro, rows, ctaText, ctaUrl }) {
       <td align="center">
         <table role="presentation" width="100%" style="max-width:520px;background-color:#ffffff;border:2px solid #141311;">
           <tr>
-            <td style="background-color:#141311;padding:20px 24px;">
-              <span style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:2px;color:#faf6ee;">SOUND COFFEE</span>
+            <td style="background-color:#141311;padding:16px 24px;">
+              <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+                <td style="vertical-align:middle;padding-right:10px;">
+                  <img src="https://soundcoffee.org/logo-mark.png" width="28" height="29" alt="Sound Coffee" style="display:block;">
+                </td>
+                <td style="vertical-align:middle;">
+                  <span style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:2px;color:#faf6ee;">SOUND COFFEE</span>
+                </td>
+              </tr></table>
             </td>
           </tr>
           <tr>
@@ -755,7 +762,10 @@ async function handleCreateCheckoutSession(request, env) {
   const { orderId, itemTitle, amountUsdCents, buyerEmail, successUrl, cancelUrl } =
     await request.json();
 
-  if (!orderId || !itemTitle || !amountUsdCents) {
+  // amountUsdCents can legitimately be 0 (a 100%-off discount) — only
+  // actually missing values (undefined/null) should be rejected, not
+  // a real zero, which was being incorrectly treated the same way.
+  if (!orderId || !itemTitle || amountUsdCents == null) {
     return jsonResponse({ error: "Missing required fields." }, 422);
   }
 

@@ -23,6 +23,11 @@ function PodcastRow({ name, feedUrl, image, recipientPubkey, isOurShow }) {
 
   return (
     <div>
+      {isOurShow && (
+        <p className="pt-6 text-center font-display text-[10px] tracking-widest text-jade">
+          OUR SHOW
+        </p>
+      )}
       <button
         onClick={() => setExpanded((e) => !e)}
         className="w-full px-6 py-6 text-center transition"
@@ -30,12 +35,19 @@ function PodcastRow({ name, feedUrl, image, recipientPubkey, isOurShow }) {
         <h2 className="font-serif text-3xl uppercase tracking-wide text-paper transition hover:text-jade sm:text-4xl">
           {name}
         </h2>
-        {isOurShow && (
-          <span className="mt-1 inline-block font-display text-[10px] tracking-widest text-jade">
-            OUR SHOW
-          </span>
-        )}
       </button>
+
+      {isOurShow && (
+        <div className="flex justify-center pb-2">
+          <ZapButton
+            recipientPubkey={SOUND_COFFEE_PUBKEY}
+            label="Boost the podcast"
+            className="border-2 border-paper px-4 py-2 font-display text-xs tracking-widest text-paper transition hover:bg-jade hover:border-jade"
+          >
+            ⚡ BOOST THE PODCAST
+          </ZapButton>
+        </div>
+      )}
 
       <div
         className={`overflow-hidden transition-all duration-500 ease-in-out ${
@@ -92,15 +104,6 @@ export default function ListeningLair() {
             height={156}
             className="mx-auto mt-3 h-auto w-full max-w-xl rotate-2"
           />
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
-            <ZapButton
-              recipientPubkey={SOUND_COFFEE_PUBKEY}
-              label="Boost the podcast"
-              className="border-2 border-paper px-5 py-2.5 font-display text-sm tracking-widest text-paper transition hover:bg-jade hover:border-jade"
-            >
-              ⚡ BOOST THE PODCAST
-            </ZapButton>
-          </div>
         </div>
 
         <div className="mx-auto max-w-4xl px-6 py-16">
@@ -127,7 +130,7 @@ export default function ListeningLair() {
           <PodcastRow name="Sound Coffee" feedUrl={MAIN_FEED.url} recipientPubkey={SOUND_COFFEE_PUBKEY} isOurShow />
 
           {curatedPodcasts.length > 0 && (
-            <p className="mt-10 mb-2 border-t border-paper/10 pt-8 text-center font-display text-xs tracking-widest text-paper/40">
+            <p className="mt-10 mb-2 border-t border-paper/10 pt-8 text-center font-display text-xs tracking-widest text-rust">
               FROM THE COMMUNITY
             </p>
           )}

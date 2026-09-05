@@ -445,6 +445,38 @@ export default function CheckoutModal({ onClose }) {
         }),
       }).catch(() => {});
 
+      // A 100%-off discount can make finalTotalSats genuinely 0 — there's
+      // nothing to actually pay, so neither Lightning (no such thing as a
+      // meaningful zero-sat invoice) nor Stripe needs to be involved at
+      // all. Register it the same way any order is, then confirm it
+      // directly, the same mechanism used for a buyer's own "I've paid"
+      // confirmation — this order is just as legitimately paid, there's
+      // simply nothing to charge.
+      if (finalTotalSats === 0) {
+        await fetch("/api/pending-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: newOrderId,
+            type: "purchase",
+            pubkey: identity.pubkey,
+            sellerPubkey,
+            invoice: `free:${newOrderId}`,
+            verifyUrl: null,
+            amountSats: 0,
+            isGuest: identity.isGuest,
+          }),
+        });
+        await fetch("/api/confirm-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: newOrderId }),
+        });
+        clearCart();
+        setStatus("done");
+        return;
+      }
+
       if (paymentMethod === "card") {
         // Register the pending payment first (no verifyUrl — Stripe's
         // webhook confirms this one directly, not the LUD-21 poller),

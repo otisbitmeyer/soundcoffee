@@ -753,10 +753,12 @@ export default function OrdersPage() {
 
     // Nostr — a properly-typed shipping_update (matching Conduit's real
     // schema, so any Gamma-compatible app can parse it programmatically,
-    // not just show it as plain chat text), only meaningful if they have
-    // a real (or at least reachable) identity, same rule as regular
-    // order messaging.
-    const canMessageViaNostr = !(order.isGuest && !order.email);
+    // not just show it as plain chat text). Only sent to a real, logged-in
+    // identity — a guest's pubkey is an ephemeral, throwaway key generated
+    // just for checkout, not something they're actually watching, so a
+    // Nostr message there would never be seen. Whether they also left an
+    // email doesn't change this — that's an independent channel below.
+    const canMessageViaNostr = !order.isGuest;
     if (canMessageViaNostr && order.buyerPubkey) {
       try {
         await sendShippingUpdate(order, { trackingNumber, carrier });
