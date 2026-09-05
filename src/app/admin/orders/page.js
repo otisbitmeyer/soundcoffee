@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Fragment } from "react";
+import { useEffect, useState, Fragment, Component } from "react";
 import { SimplePool } from "nostr-tools/pool";
 import { nip19 } from "nostr-tools";
 import Header from "@/components/Header";
@@ -187,6 +187,38 @@ function ItemNames({ items, listings }) {
       })}
     </div>
   );
+}
+
+// Contains a crash in a single order's expanded detail to just that
+// row, instead of the whole page failing — matches the reported
+// symptom exactly ("page can't load, reload or go back"), regardless
+// of the exact root cause, and shows what actually broke so it's
+// diagnosable next time rather than a dead end.
+class OrderDetailErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <tr>
+          <td colSpan={11} className="bg-rust/5 px-4 py-4">
+            <p className="font-serif text-sm text-rust">
+              Couldn&rsquo;t load this order&rsquo;s details.
+            </p>
+            <p className="mt-1 font-mono text-xs text-rust/70">
+              {this.state.error.message}
+            </p>
+          </td>
+        </tr>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 function OrderDetail({ order, messages, onSend, onMarkShipped }) {
@@ -1063,12 +1095,14 @@ export default function OrdersPage() {
                             </td>
                           </tr>
                           {isOpen && (
-                            <OrderDetail
-                              order={order}
-                              messages={messagesByOrder[order.orderId] || []}
-                              onSend={handleSendMessage}
-                              onMarkShipped={handleMarkShipped}
-                            />
+                            <OrderDetailErrorBoundary>
+                              <OrderDetail
+                                order={order}
+                                messages={messagesByOrder[order.orderId] || []}
+                                onSend={handleSendMessage}
+                                onMarkShipped={handleMarkShipped}
+                              />
+                            </OrderDetailErrorBoundary>
                           )}
                         </Fragment>
                       );

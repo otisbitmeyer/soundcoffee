@@ -114,6 +114,13 @@ export default function Header() {
                         >
                           MERCHANT SETTINGS
                         </Link>
+                        <Link
+                          href="/admin/radio"
+                          onClick={() => setMenuOpen(false)}
+                          className="block border-t border-ink/10 px-4 py-3 text-ink hover:bg-ink hover:text-paper"
+                        >
+                          RADIO CURATION
+                        </Link>
                       </>
                     )}
                     <button

@@ -42,30 +42,37 @@ export function useProfile(pubkey) {
     let cancelled = false;
     setLoading(true);
 
-    getPool()
-      .get(DEFAULT_RELAYS, { kinds: [0], authors: [pubkey] })
-      .then((event) => {
-        if (cancelled) return;
-        if (!event) {
-          cache.set(pubkey, null);
-          setProfile(null);
-          return;
-        }
-        try {
-          const data = JSON.parse(event.content);
-          cache.set(pubkey, data);
-          setProfile(data);
-        } catch {
-          cache.set(pubkey, null);
-          setProfile(null);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setProfile(null);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    try {
+      getPool()
+        .get(DEFAULT_RELAYS, { kinds: [0], authors: [pubkey] })
+        .then((event) => {
+          if (cancelled) return;
+          if (!event) {
+            cache.set(pubkey, null);
+            setProfile(null);
+            return;
+          }
+          try {
+            const data = JSON.parse(event.content);
+            cache.set(pubkey, data);
+            setProfile(data);
+          } catch {
+            cache.set(pubkey, null);
+            setProfile(null);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setProfile(null);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    } catch {
+      // A malformed pubkey could throw synchronously before the pool
+      // even returns a promise — same fallback as the async .catch().
+      setProfile(null);
+      setLoading(false);
+    }
 
     return () => {
       cancelled = true;

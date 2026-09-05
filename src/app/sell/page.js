@@ -7,6 +7,7 @@ import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import { useAuth } from "@/context/AuthContext";
 import { useNip99Listings, getVariationsOf } from "@/hooks/useNip99Listings";
+import { fetchShippingOption } from "@/hooks/useShippingOption";
 import { DEFAULT_RELAYS } from "@/lib/relays";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
@@ -489,6 +490,24 @@ export default function SellPage() {
     if (listing.shippingCost) {
       setShipPrice(listing.shippingCost.amount || "");
       setShipCurrency(listing.shippingCost.currency || "USD");
+    } else if (listing.shippingOptionCoords?.[0]) {
+      // Every listing published through this page stores shipping as a
+      // separate relay event, not inline — same gap already found and
+      // fixed in cart checkout. Resolving it here too, so the edit form
+      // doesn't show an empty field for shipping that's actually set.
+      setShipPrice("");
+      setShipCurrency("USD");
+      fetchShippingOption(listing.shippingOptionCoords[0])
+        .then((option) => {
+          if (option?.price) {
+            setShipPrice(option.price.amount || "");
+            setShipCurrency(option.price.currency || "USD");
+          }
+        })
+        .catch(() => {});
+    } else {
+      setShipPrice("");
+      setShipCurrency("USD");
     }
     setEditingDTag(listing.dTag);
     setStatus("form");

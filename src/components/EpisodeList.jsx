@@ -60,8 +60,11 @@ function stripHtml(html) {
 /** Builds the track object the global player context expects — carries
  * full identifying metadata (not just an audio URL) so a future
  * coordinator (the zap-split radio feed design) can reference and act
- * on real tracks without this shape needing to change. */
-function toTrack(episode, showImage, feedTitle) {
+ * on real tracks without this shape needing to change. recipientPubkey
+ * defaults to Sound Coffee's own — once tracks come from other
+ * podcasts (the admin radio curation feature), each feed will need its
+ * own configured recipient instead. */
+function toTrack(episode, showImage, feedTitle, recipientPubkey) {
   return {
     guid: episode.guid,
     title: episode.title,
@@ -70,10 +73,11 @@ function toTrack(episode, showImage, feedTitle) {
     feedTitle: feedTitle || null,
     chaptersUrl: episode.chaptersUrl || null,
     link: episode.link,
+    recipientPubkey: recipientPubkey || SOUND_COFFEE_PUBKEY,
   };
 }
 
-function EpisodeCard({ episode, showImage, feedTitle }) {
+function EpisodeCard({ episode, showImage, feedTitle, recipientPubkey }) {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState(null); // null | "notes" | "chapters" | "comments"
   const [publishing, setPublishing] = useState(false);
@@ -85,7 +89,7 @@ function EpisodeCard({ episode, showImage, feedTitle }) {
   const isSoundCoffeeAccount = pubkey === SOUND_COFFEE_PUBKEY;
 
   const showNotes = stripHtml(episode.description);
-  const track = toTrack(episode, showImage, feedTitle);
+  const track = toTrack(episode, showImage, feedTitle, recipientPubkey);
   const isThisTrackLoaded = currentTrack?.guid === episode.guid;
   const isThisPlaying = isThisTrackLoaded && isPlaying;
 
@@ -189,7 +193,7 @@ function EpisodeCard({ episode, showImage, feedTitle }) {
 
               {episode.guid && (
                 <ZapButton
-                  recipientPubkey={SOUND_COFFEE_PUBKEY}
+                  recipientPubkey={recipientPubkey || SOUND_COFFEE_PUBKEY}
                   label={`Zap: ${episode.title}`}
                   episodeGuid={episode.guid}
                   eventId={noteId || undefined}
@@ -291,14 +295,38 @@ function EpisodeCard({ episode, showImage, feedTitle }) {
   );
 }
 
-export default function EpisodeList({ episodes, count, showImage, feedTitle }) {
-  const list = count ? episodes.slice(0, count) : episodes;
+export default function EpisodeList({ episodes, count, showImage, feedTitle, recipientPubkey, paginate }) {
+  const PAGE_SIZE = 10;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  const list = paginate
+    ? episodes.slice(0, visibleCount)
+    : count
+    ? episodes.slice(0, count)
+    : episodes;
+  const hasMore = paginate && visibleCount < episodes.length;
 
   return (
     <div className="space-y-2">
       {list.map((ep, i) => (
-        <EpisodeCard key={ep.guid || i} episode={ep} showImage={showImage} feedTitle={feedTitle} />
+        <EpisodeCard
+          key={ep.guid || i}
+          episode={ep}
+          showImage={showImage}
+          feedTitle={feedTitle}
+          recipientPubkey={recipientPubkey}
+        />
       ))}
+      {hasMore && (
+        <div className="pt-2 text-center">
+          <button
+            onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+            className="border-2 border-paper/40 px-5 py-2 font-display text-xs tracking-widest text-paper transition hover:border-jade hover:text-jade"
+          >
+            LOAD 10 MORE
+          </button>
+        </div>
+      )}
     </div>
   );
 }

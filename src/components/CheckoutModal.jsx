@@ -436,6 +436,8 @@ export default function CheckoutModal({ onClose }) {
           itemTitle: cartSummary,
           quantity: cartItems.reduce((sum, i) => sum + i.quantity, 0),
           amountSats: finalTotalSats,
+          amountUsdCents: finalTotalUsdCents,
+          paymentMethod,
           buyerNpub: identity.isGuest ? null : npub,
           buyerEmail: email.trim() || null,
           address: combinedAddress || null,

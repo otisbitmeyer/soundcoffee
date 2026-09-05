@@ -290,7 +290,75 @@ async function handleBrantaVerify(request, env) {
   return jsonResponse({ verifyLink });
 }
 
-async function sendEmail(env, { to, subject, text }) {
+/**
+ * Wraps order-email content in a branded HTML template. Table-based
+ * layout with inline styles throughout — not a stylistic choice, it's
+ * what actually renders consistently across email clients. Most
+ * (Outlook especially) don't support flexbox/grid and many strip
+ * <style> blocks entirely. Custom fonts won't load in most clients
+ * either, regardless of what's specified — falls back to widely
+ * available serif/sans-serif stacks instead.
+ *
+ * `rows` is an array of { label, value } pairs, rendered as a simple
+ * two-column table — the actual order details.
+ */
+function renderOrderEmailHtml({ heading, intro, rows, ctaText, ctaUrl }) {
+  const rowsHtml = rows
+    .filter((r) => r.value)
+    .map(
+      (r) => `
+        <tr>
+          <td style="padding:6px 0;border-bottom:1px solid #14131122;font-family:Georgia,serif;font-size:13px;color:#14131199;white-space:nowrap;">${r.label}</td>
+          <td style="padding:6px 0 6px 16px;border-bottom:1px solid #14131122;font-family:Georgia,serif;font-size:14px;color:#141311;">${r.value}</td>
+        </tr>`
+    )
+    .join("");
+
+  return `
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background-color:#faf6ee;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#faf6ee;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:520px;background-color:#ffffff;border:2px solid #141311;">
+          <tr>
+            <td style="background-color:#141311;padding:20px 24px;">
+              <span style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:2px;color:#faf6ee;">SOUND COFFEE</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 24px 8px 24px;">
+              <h1 style="margin:0 0 12px 0;font-family:Georgia,serif;font-size:20px;color:#141311;">${heading}</h1>
+              ${intro ? `<p style="margin:0 0 20px 0;font-family:Georgia,serif;font-size:14px;color:#14131199;line-height:1.5;">${intro}</p>` : ""}
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                ${rowsHtml}
+              </table>
+              ${
+                ctaUrl
+                  ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:24px;">
+                       <tr><td style="background-color:#141311;">
+                         <a href="${ctaUrl}" style="display:inline-block;padding:12px 20px;font-family:Arial,sans-serif;font-size:12px;letter-spacing:1px;color:#faf6ee;text-decoration:none;">${ctaText || "VIEW"}</a>
+                       </td></tr>
+                     </table>`
+                  : ""
+              }
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 24px;border-top:2px solid #14131111;">
+              <span style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:1px;color:#14131166;">SOUND COFFEE — BUILT ON NOSTR</span>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+async function sendEmail(env, { to, subject, text, html }) {
   if (!env.RESEND_API_KEY) return { skipped: true };
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -306,6 +374,7 @@ async function sendEmail(env, { to, subject, text }) {
       to,
       subject,
       text,
+      ...(html ? { html } : {}),
     }),
   });
   if (!res.ok) throw new Error(await res.text());
@@ -363,22 +432,49 @@ async function handleNotifyOrderDetected(request, env) {
 
 async function handleNotifyOrder(request, env) {
   const body = await request.json();
-  const { orderId, itemTitle, quantity, amountSats, buyerNpub, buyerEmail, address, notes } = body;
+  const {
+    orderId,
+    itemTitle,
+    quantity,
+    amountSats,
+    amountUsdCents,
+    paymentMethod,
+    buyerNpub,
+    buyerEmail,
+    address,
+    notes,
+  } = body;
 
   if (!orderId || !itemTitle) {
     return jsonResponse({ error: "Missing required fields." }, 422);
   }
 
+  // Show the amount in whatever currency was actually paid — sats for
+  // Lightning, dollars for card — not always sats regardless of method.
+  const amountLine =
+    paymentMethod === "card" && amountUsdCents
+      ? `$${(amountUsdCents / 100).toFixed(2)}`
+      : `${amountSats || 0} sats`;
+
   const summary = [
     `New order: ${itemTitle} x${quantity || 1}`,
     `Order ID: ${orderId}`,
-    `Amount: ${amountSats} sats`,
+    `Amount: ${amountLine}`,
     buyerNpub ? `Buyer npub: ${buyerNpub}` : null,
     address ? `Shipping address:\n${address}` : null,
     notes ? `Notes: ${notes}` : null,
   ]
     .filter(Boolean)
     .join("\n\n");
+
+  const emailRows = [
+    { label: "ITEM", value: `${itemTitle} &times;${quantity || 1}` },
+    { label: "ORDER ID", value: orderId },
+    { label: "AMOUNT", value: amountLine },
+    { label: "BUYER NPUB", value: buyerNpub },
+    { label: "SHIPPING ADDRESS", value: address ? address.replace(/\n/g, "<br>") : null },
+    { label: "NOTES", value: notes },
+  ];
 
   const results = {};
 
@@ -388,6 +484,10 @@ async function handleNotifyOrder(request, env) {
         to: env.ADMIN_EMAIL,
         subject: `☕ New order: ${itemTitle}`,
         text: summary,
+        html: renderOrderEmailHtml({
+          heading: "New order received",
+          rows: emailRows,
+        }),
       });
     } catch (e) {
       results.admin = { error: e.message };
@@ -400,6 +500,11 @@ async function handleNotifyOrder(request, env) {
         to: buyerEmail,
         subject: `Your Sound Coffee order (${orderId})`,
         text: `Thanks for your order!\n\n${summary}\n\nWe'll be in touch about shipping.`,
+        html: renderOrderEmailHtml({
+          heading: "Thanks for your order!",
+          intro: "We'll be in touch about shipping.",
+          rows: emailRows,
+        }),
       });
     } catch (e) {
       results.buyer = { error: e.message };
@@ -1233,6 +1338,78 @@ async function handlePodcastChapters(request, env) {
   }
 }
 
+// ---------------------------------------------------------------------
+// Radio podcast curation — the site's one curated radio feed, shown in
+// Listening Lair alongside Sound Coffee's own show. Admin-only to add
+// or remove; not a public, guest-built queue.
+// ---------------------------------------------------------------------
+
+/**
+ * Fetches and validates an RSS feed to preview before actually adding
+ * it — confirms it's real and working, and returns its own declared
+ * name/image so the admin doesn't have to type those in by hand.
+ */
+async function handlePreviewRadioFeed(request, env) {
+  const url = new URL(request.url);
+  const feedUrl = url.searchParams.get("url");
+  if (!feedUrl) return jsonResponse({ error: "Missing ?url=" }, 422);
+
+  try {
+    const res = await fetch(feedUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; SoundCoffeeBot/1.0)" },
+    });
+    if (!res.ok) return jsonResponse({ error: `Feed returned ${res.status}` }, 502);
+    const xml = await res.text();
+    const { feedInfo, items } = parsePodcastRss(xml);
+    if (!items || items.length === 0) {
+      return jsonResponse({ error: "That feed has no episodes." }, 422);
+    }
+    return jsonResponse({
+      name: feedInfo?.title || "Untitled podcast",
+      image: feedInfo?.image || null,
+      recentEpisodeTitles: items.slice(0, 3).map((i) => i.title),
+    });
+  } catch (e) {
+    return jsonResponse({ error: e.message }, 502);
+  }
+}
+
+async function handleAddRadioPodcast(request, env) {
+  const { feedUrl, name, image, recipientPubkey } = await request.json();
+  if (!feedUrl || !name) {
+    return jsonResponse({ error: "Missing feedUrl or name." }, 422);
+  }
+  await env.DB.prepare(
+    `INSERT INTO radio_podcasts (feed_url, name, recipient_pubkey, image, added_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(feed_url) DO UPDATE SET name = excluded.name, recipient_pubkey = excluded.recipient_pubkey, image = excluded.image`
+  )
+    .bind(feedUrl, name, recipientPubkey || null, image || null, Date.now())
+    .run();
+  return jsonResponse({ ok: true });
+}
+
+async function handleListRadioPodcasts(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM radio_podcasts ORDER BY added_at ASC`
+  ).all();
+  return jsonResponse({
+    podcasts: results.map((p) => ({
+      feedUrl: p.feed_url,
+      name: p.name,
+      recipientPubkey: p.recipient_pubkey,
+      image: p.image,
+    })),
+  });
+}
+
+async function handleRemoveRadioPodcast(request, env) {
+  const { feedUrl } = await request.json();
+  if (!feedUrl) return jsonResponse({ error: "Missing feedUrl." }, 422);
+  await env.DB.prepare(`DELETE FROM radio_podcasts WHERE feed_url = ?`).bind(feedUrl).run();
+  return jsonResponse({ ok: true });
+}
+
 /**
  * Direct diagnostic — visit this in a browser to immediately see
  * exactly why email isn't working, instead of placing test orders and
@@ -1481,6 +1658,18 @@ async function handleFetch(request, env) {
   }
   if (request.method === "GET" && url.pathname === "/api/podcast-chapters") {
     return handlePodcastChapters(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/radio-podcasts/preview") {
+    return handlePreviewRadioFeed(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/radio-podcasts") {
+    return handleAddRadioPodcast(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/radio-podcasts") {
+    return handleListRadioPodcasts(env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/radio-podcasts/remove") {
+    return handleRemoveRadioPodcast(request, env);
   }
   if (request.method === "GET" && url.pathname === "/api/club-members") {
     return handleClubMembers(env);

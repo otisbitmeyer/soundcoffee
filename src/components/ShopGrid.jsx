@@ -34,7 +34,10 @@ function SellerListings({ seller }) {
 
   if (loading) {
     return (
-      <div className="mt-12 grid gap-8 sm:grid-cols-3">
+      <div
+        className="mt-12 grid justify-center gap-8"
+        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 300px))" }}
+      >
         {[1, 2, 3].map((i) => (
           <div key={i} className="animate-pulse border-2 border-ink/20">
             <div className="aspect-square bg-ink/5" />
@@ -57,7 +60,10 @@ function SellerListings({ seller }) {
   }
 
   return (
-    <div className="mt-12 grid gap-8 sm:grid-cols-3">
+    <div
+      className="mt-12 grid justify-center gap-8"
+      style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 300px))" }}
+    >
       {listings.map((listing) => (
         <ProductCard
           key={listing.id}

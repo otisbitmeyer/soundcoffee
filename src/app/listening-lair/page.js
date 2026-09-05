@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import Header from "@/components/Header";
 import EpisodeList from "@/components/EpisodeList";
@@ -9,11 +10,58 @@ import { MAIN_FEED } from "@/lib/podcastFeeds";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 import PwaInstallButton from "@/components/PwaInstallButton";
 
+/** One row per podcast — collapsed to just its name (matching the same
+ * chalkboard, click-to-expand treatment as individual episode titles),
+ * expanding to that show's episode list. Fetches its own feed lazily —
+ * only once actually expanded — rather than every curated show's full
+ * feed loading upfront regardless of whether anyone opens it. */
+function PodcastRow({ name, feedUrl, image, recipientPubkey }) {
+  const [expanded, setExpanded] = useState(false);
+  const { episodes, feedInfo } = usePodcastFeed(expanded ? feedUrl : null);
+
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded((e) => !e)}
+        className="w-full px-6 py-5 text-center transition"
+      >
+        <h2 className="font-serif text-2xl tracking-wide text-paper transition hover:text-jade sm:text-3xl">
+          {name}
+        </h2>
+      </button>
+
+      <div
+        className={`overflow-hidden transition-all duration-500 ease-in-out ${
+          expanded ? "max-h-[6000px] opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
+        <div className="border-t border-paper/10 px-6 py-6">
+          {episodes ? (
+            <EpisodeList
+              episodes={episodes}
+              showImage={image || feedInfo?.image}
+              feedTitle={name}
+              recipientPubkey={recipientPubkey}
+              paginate
+            />
+          ) : (
+            <p className="text-center font-serif text-sm text-paper/50">Loading episodes…</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ListeningLair() {
-  // Just the one show for now — episodes go straight on this page
-  // instead of behind a "pick a show" click-through. Easy to bring that
-  // back if/when there's more than one show to choose between.
-  const { episodes, feedInfo } = usePodcastFeed(MAIN_FEED.url);
+  const [curatedPodcasts, setCuratedPodcasts] = useState([]);
+
+  useEffect(() => {
+    fetch("/api/radio-podcasts")
+      .then((res) => res.json())
+      .then((data) => setCuratedPodcasts(data.podcasts || []))
+      .catch(() => setCuratedPodcasts([]));
+  }, []);
 
   return (
     <>
@@ -39,21 +87,20 @@ export default function ListeningLair() {
             >
               ⚡ BOOST THE PODCAST
             </ZapButton>
-            <a
-              href="/radio"
-              className="border-2 border-jade/60 px-5 py-2.5 font-display text-sm tracking-widest text-jade transition hover:border-jade hover:bg-jade hover:text-ink"
-            >
-              📻 BUILD A RADIO STATION
-            </a>
           </div>
         </div>
 
         <div className="mx-auto max-w-4xl px-6 py-16">
-          {episodes ? (
-            <EpisodeList episodes={episodes} showImage={feedInfo?.image} feedTitle="Sound Coffee" />
-          ) : (
-            <p className="text-center font-serif text-paper/50">Loading episodes…</p>
-          )}
+          <PodcastRow name="Sound Coffee" feedUrl={MAIN_FEED.url} recipientPubkey={SOUND_COFFEE_PUBKEY} />
+          {curatedPodcasts.map((p) => (
+            <PodcastRow
+              key={p.feedUrl}
+              name={p.name}
+              feedUrl={p.feedUrl}
+              image={p.image}
+              recipientPubkey={p.recipientPubkey}
+            />
+          ))}
         </div>
       </main>
 
