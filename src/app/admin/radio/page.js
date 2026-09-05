@@ -7,20 +7,22 @@ import LoginModal from "@/components/LoginModal";
 import { useAuth } from "@/context/AuthContext";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
-/** A curated podcast's row, expandable to browse and add its own
- * episodes directly to the featured playlist — fetches lazily, only
- * once actually clicked, reusing the same preview endpoint used for
- * adding a brand new feed. */
 /** A curated feed's row (podcast or music), expandable to browse and
  * add its own episodes/tracks directly to the featured playlist —
  * fetches lazily, only once actually clicked, reusing the same
  * preview endpoint used for adding a brand new feed. Paginated 10 at
- * a time, same "load more" pattern as the public episode lists. */
-function CuratedFeedRow({ feed, previewEndpoint, addingEpisodeGuid, onAddEpisode, onRemove, showPodcastAddButton = true }) {
+ * a time, same "load more" pattern as the public episode lists.
+ * Editable in place — changing the zap recipient re-posts to the same
+ * add endpoint, which already upserts on feedUrl, rather than needing
+ * to remove and re-add the whole thing. */
+function CuratedFeedRow({ feed, previewEndpoint, addingEpisodeGuid, onAddEpisode, onRemove, onEditRecipient, showPodcastAddButton = true }) {
   const [expanded, setExpanded] = useState(false);
   const [episodes, setEpisodes] = useState(null);
   const [loading, setLoading] = useState(false);
   const [visibleCount, setVisibleCount] = useState(10);
+  const [editing, setEditing] = useState(false);
+  const [editNpubInput, setEditNpubInput] = useState("");
+  const [saving, setSaving] = useState(false);
 
   async function toggleExpand() {
     const next = !expanded;
@@ -36,6 +38,21 @@ function CuratedFeedRow({ feed, previewEndpoint, addingEpisodeGuid, onAddEpisode
       } finally {
         setLoading(false);
       }
+    }
+  }
+
+  function startEditing() {
+    setEditNpubInput(feed.recipientPubkey || "");
+    setEditing(true);
+  }
+
+  async function handleSaveRecipient() {
+    setSaving(true);
+    try {
+      await onEditRecipient(feed, editNpubInput);
+      setEditing(false);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -61,12 +78,47 @@ function CuratedFeedRow({ feed, previewEndpoint, addingEpisodeGuid, onAddEpisode
           <span className="font-display text-xs text-ink/40">{expanded ? "▲" : "▼"}</span>
         </button>
         <button
+          onClick={startEditing}
+          className="shrink-0 font-display text-xs tracking-widest text-ink/50 hover:text-ink"
+        >
+          EDIT
+        </button>
+        <button
           onClick={() => onRemove(feed.feedUrl)}
           className="shrink-0 font-display text-xs tracking-widest text-rust hover:text-ink"
         >
           REMOVE
         </button>
       </div>
+
+      {editing && (
+        <div className="border-t border-ink/10 bg-ink/5 px-3 py-2">
+          <label className="block font-display text-xs tracking-widest text-ink/60">
+            ZAP RECIPIENT
+          </label>
+          <div className="mt-1 flex gap-2">
+            <input
+              value={editNpubInput}
+              onChange={(e) => setEditNpubInput(e.target.value)}
+              placeholder="npub or hex — leave blank to remove"
+              className="flex-1 border-2 border-ink/30 px-3 py-2 font-mono text-xs focus:border-ink focus:outline-none"
+            />
+            <button
+              onClick={handleSaveRecipient}
+              disabled={saving}
+              className="border-2 border-ink bg-ink px-4 py-2 font-display text-xs tracking-widest text-paper hover:bg-jade hover:border-jade disabled:opacity-50"
+            >
+              {saving ? "…" : "SAVE"}
+            </button>
+            <button
+              onClick={() => setEditing(false)}
+              className="font-display text-xs tracking-widest text-ink/50 hover:text-ink"
+            >
+              CANCEL
+            </button>
+          </div>
+        </div>
+      )}
 
       {expanded && (
         <div className="border-t border-ink/10 px-3 py-2">
@@ -147,6 +199,7 @@ export default function AdminRadio() {
   const [adding, setAdding] = useState(false);
   const [addingEpisodeGuid, setAddingEpisodeGuid] = useState(null);
   const [musicFeedUrlInput, setMusicFeedUrlInput] = useState("");
+  const [musicNpubInput, setMusicNpubInput] = useState("");
   const [musicPreview, setMusicPreview] = useState(null);
   const [musicPreviewLoading, setMusicPreviewLoading] = useState(false);
   const [musicPreviewError, setMusicPreviewError] = useState("");
@@ -193,6 +246,12 @@ export default function AdminRadio() {
     if (!musicPreview) return;
     setAddingMusicFeed(true);
     try {
+      let recipientPubkey = null;
+      if (musicNpubInput.trim()) {
+        recipientPubkey = musicNpubInput.trim().startsWith("npub1")
+          ? nip19.decode(musicNpubInput.trim()).data
+          : musicNpubInput.trim();
+      }
       await fetch("/api/radio-music-feeds", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -200,9 +259,11 @@ export default function AdminRadio() {
           feedUrl: musicFeedUrlInput.trim(),
           name: musicPreview.name,
           image: musicPreview.image,
+          recipientPubkey,
         }),
       });
       setMusicFeedUrlInput("");
+      setMusicNpubInput("");
       setMusicPreview(null);
       await fetchMusicFeeds();
     } finally {
@@ -304,6 +365,40 @@ export default function AdminRadio() {
       body: JSON.stringify({ feedUrl }),
     });
     fetchPodcasts();
+  }
+
+  function toHexPubkey(npubOrHex) {
+    if (!npubOrHex?.trim()) return null;
+    const trimmed = npubOrHex.trim();
+    return trimmed.startsWith("npub1") ? nip19.decode(trimmed).data : trimmed;
+  }
+
+  async function handleEditPodcastRecipient(podcast, npubInput) {
+    await fetch("/api/radio-podcasts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        feedUrl: podcast.feedUrl,
+        name: podcast.name,
+        image: podcast.image,
+        recipientPubkey: toHexPubkey(npubInput),
+      }),
+    });
+    fetchPodcasts();
+  }
+
+  async function handleEditMusicFeedRecipient(feed, npubInput) {
+    await fetch("/api/radio-music-feeds", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        feedUrl: feed.feedUrl,
+        name: feed.name,
+        image: feed.image,
+        recipientPubkey: toHexPubkey(npubInput),
+      }),
+    });
+    fetchMusicFeeds();
   }
 
   async function handleAddEpisode(episode, trackType, feedContext) {
@@ -505,6 +600,7 @@ export default function AdminRadio() {
                       addingEpisodeGuid={addingEpisodeGuid}
                       onAddEpisode={handleAddEpisode}
                       onRemove={handleRemove}
+                      onEditRecipient={handleEditPodcastRecipient}
                     />
                   ))}
                 </div>
@@ -553,6 +649,17 @@ export default function AdminRadio() {
                         )}
                         <p className="font-display text-sm text-ink">{musicPreview.name}</p>
                       </div>
+                      <div className="mt-3">
+                        <label className="block font-display text-xs tracking-widest text-ink/60">
+                          ZAP RECIPIENT (OPTIONAL)
+                        </label>
+                        <input
+                          value={musicNpubInput}
+                          onChange={(e) => setMusicNpubInput(e.target.value)}
+                          placeholder="npub or hex — leave blank if this artist doesn't have one yet"
+                          className="mt-1 w-full border-2 border-ink/30 px-3 py-2 font-mono text-xs focus:border-ink focus:outline-none"
+                        />
+                      </div>
                       <button
                         onClick={handleAddMusicFeed}
                         disabled={addingMusicFeed}
@@ -581,6 +688,7 @@ export default function AdminRadio() {
                       addingEpisodeGuid={addingEpisodeGuid}
                       onAddEpisode={handleAddEpisode}
                       onRemove={handleRemoveMusicFeed}
+                      onEditRecipient={handleEditMusicFeedRecipient}
                       showPodcastAddButton={false}
                     />
                   ))}
