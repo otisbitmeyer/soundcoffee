@@ -1505,12 +1505,18 @@ async function handleAddPlaylistEpisode(request, env) {
   }
   const type = trackType === "music_track" ? "music_track" : "podcast_episode";
 
+  // New tracks go to the end of the current order by default.
+  const maxOrderRow = await env.DB.prepare(
+    `SELECT MAX(sort_order) as maxOrder FROM radio_playlist_episodes`
+  ).first();
+  const nextOrder = (maxOrderRow?.maxOrder ?? 0) + 1;
+
   await env.DB.prepare(
-    `INSERT INTO radio_playlist_episodes (guid, feed_url, title, audio_url, image, chapters_url, feed_name, recipient_pubkey, track_type, added_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO radio_playlist_episodes (guid, feed_url, title, audio_url, image, chapters_url, feed_name, recipient_pubkey, track_type, sort_order, added_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(guid) DO UPDATE SET title = excluded.title, audio_url = excluded.audio_url, image = excluded.image, chapters_url = excluded.chapters_url`
   )
-    .bind(guid, feedUrl, title, audioUrl || null, image || null, chaptersUrl || null, feedName || null, recipientPubkey || null, type, Date.now())
+    .bind(guid, feedUrl, title, audioUrl || null, image || null, chaptersUrl || null, feedName || null, recipientPubkey || null, type, nextOrder, Date.now())
     .run();
 
   // Music tracks deliberately never curate their parent show into the
@@ -1534,7 +1540,7 @@ async function handleAddPlaylistEpisode(request, env) {
 
 async function handleListPlaylistEpisodes(env) {
   const { results } = await env.DB.prepare(
-    `SELECT * FROM radio_playlist_episodes ORDER BY added_at DESC`
+    `SELECT * FROM radio_playlist_episodes ORDER BY sort_order ASC`
   ).all();
   return jsonResponse({
     episodes: results.map((e) => ({
@@ -1555,6 +1561,24 @@ async function handleRemovePlaylistEpisode(request, env) {
   const { guid } = await request.json();
   if (!guid) return jsonResponse({ error: "Missing guid." }, 422);
   await env.DB.prepare(`DELETE FROM radio_playlist_episodes WHERE guid = ?`).bind(guid).run();
+  return jsonResponse({ ok: true });
+}
+
+/**
+ * Reorders the featured playlist — takes the full list of guids in
+ * the desired order and assigns each one's sort_order to match its
+ * position. Simple whole-list replace rather than move-one-step, so
+ * the frontend can just send its current array after any drag/swap.
+ */
+async function handleReorderPlaylist(request, env) {
+  const { guids } = await request.json();
+  if (!Array.isArray(guids)) return jsonResponse({ error: "Missing guids array." }, 422);
+
+  for (let i = 0; i < guids.length; i++) {
+    await env.DB.prepare(`UPDATE radio_playlist_episodes SET sort_order = ? WHERE guid = ?`)
+      .bind(i, guids[i])
+      .run();
+  }
   return jsonResponse({ ok: true });
 }
 
@@ -1836,6 +1860,9 @@ async function handleFetch(request, env) {
   }
   if (request.method === "POST" && url.pathname === "/api/radio-playlist/remove") {
     return handleRemovePlaylistEpisode(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/radio-playlist/reorder") {
+    return handleReorderPlaylist(request, env);
   }
   if (request.method === "GET" && url.pathname === "/api/club-members") {
     return handleClubMembers(env);

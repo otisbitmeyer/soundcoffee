@@ -299,6 +299,21 @@ export default function AdminRadio() {
     fetchPlaylist();
   }
 
+  function handleMovePlaylistItem(index, direction) {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= playlist.length) return;
+
+    const reordered = [...playlist];
+    [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+    setPlaylist(reordered); // optimistic — feels instant, synced below
+
+    fetch("/api/radio-playlist/reorder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ guids: reordered.map((e) => e.guid) }),
+    }).catch(() => fetchPlaylist()); // if it failed, re-sync with what's actually saved
+  }
+
   async function fetchPodcasts() {
     try {
       const res = await fetch("/api/radio-podcasts");
@@ -706,7 +721,7 @@ export default function AdminRadio() {
                       Nothing featured yet.
                     </p>
                   )}
-                  {playlist?.map((e) => (
+                  {playlist?.map((e, i) => (
                     <div
                       key={e.guid}
                       className="flex items-center justify-between border border-ink/15 px-3 py-2"
@@ -726,12 +741,30 @@ export default function AdminRadio() {
                           </p>
                         </div>
                       </div>
-                      <button
-                        onClick={() => handleRemoveFromPlaylist(e.guid)}
-                        className="font-display text-xs tracking-widest text-rust hover:text-ink"
-                      >
-                        REMOVE
-                      </button>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <button
+                          onClick={() => handleMovePlaylistItem(i, -1)}
+                          disabled={i === 0}
+                          aria-label="Move up"
+                          className="font-display text-sm text-ink/50 hover:text-ink disabled:opacity-20"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          onClick={() => handleMovePlaylistItem(i, 1)}
+                          disabled={i === playlist.length - 1}
+                          aria-label="Move down"
+                          className="font-display text-sm text-ink/50 hover:text-ink disabled:opacity-20"
+                        >
+                          ▼
+                        </button>
+                        <button
+                          onClick={() => handleRemoveFromPlaylist(e.guid)}
+                          className="font-display text-xs tracking-widest text-rust hover:text-ink"
+                        >
+                          REMOVE
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

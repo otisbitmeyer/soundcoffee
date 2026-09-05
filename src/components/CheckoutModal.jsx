@@ -987,7 +987,7 @@ export default function CheckoutModal({ onClose }) {
               <p>
                 Your payment confirmation has been sent to the seller.
                 They&rsquo;ll follow up with shipping details via Nostr DM
-                {email.trim() ? " and email" : ""}.
+                {email.trim() ? " and/or email" : ""}.
               </p>
               <p className="font-serif text-xs italic text-ink/50">
                 Order ID: {orderId}
