@@ -1399,7 +1399,7 @@ async function handlePreviewRadioFeed(request, env) {
     return jsonResponse({
       name: feedInfo?.title || "Untitled podcast",
       image: feedInfo?.image || null,
-      recentEpisodes: items.slice(0, 5).map((i) => ({
+      recentEpisodes: items.map((i) => ({
         guid: i.guid,
         title: i.title,
         audioUrl: i.audioUrl || null,
@@ -1445,6 +1445,49 @@ async function handleRemoveRadioPodcast(request, env) {
   const { feedUrl } = await request.json();
   if (!feedUrl) return jsonResponse({ error: "Missing feedUrl." }, 422);
   await env.DB.prepare(`DELETE FROM radio_podcasts WHERE feed_url = ?`).bind(feedUrl).run();
+  return jsonResponse({ ok: true });
+}
+
+// ---------------------------------------------------------------------
+// Music feed curation — a separate admin-side convenience list, purely
+// for repeat access when adding songs to the featured playlist. Never
+// shown in Listening Lair's podcast list — mirrors radio_podcasts'
+// endpoints exactly, just a different table.
+// ---------------------------------------------------------------------
+
+async function handleAddMusicFeed(request, env) {
+  const { feedUrl, name, image, recipientPubkey } = await request.json();
+  if (!feedUrl || !name) {
+    return jsonResponse({ error: "Missing feedUrl or name." }, 422);
+  }
+  await env.DB.prepare(
+    `INSERT INTO radio_music_feeds (feed_url, name, recipient_pubkey, image, added_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(feed_url) DO UPDATE SET name = excluded.name, recipient_pubkey = excluded.recipient_pubkey, image = excluded.image`
+  )
+    .bind(feedUrl, name, recipientPubkey || null, image || null, Date.now())
+    .run();
+  return jsonResponse({ ok: true });
+}
+
+async function handleListMusicFeeds(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM radio_music_feeds ORDER BY added_at ASC`
+  ).all();
+  return jsonResponse({
+    feeds: results.map((f) => ({
+      feedUrl: f.feed_url,
+      name: f.name,
+      recipientPubkey: f.recipient_pubkey,
+      image: f.image,
+    })),
+  });
+}
+
+async function handleRemoveMusicFeed(request, env) {
+  const { feedUrl } = await request.json();
+  if (!feedUrl) return jsonResponse({ error: "Missing feedUrl." }, 422);
+  await env.DB.prepare(`DELETE FROM radio_music_feeds WHERE feed_url = ?`).bind(feedUrl).run();
   return jsonResponse({ ok: true });
 }
 
@@ -1775,6 +1818,15 @@ async function handleFetch(request, env) {
   }
   if (request.method === "POST" && url.pathname === "/api/radio-podcasts/remove") {
     return handleRemoveRadioPodcast(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/radio-music-feeds") {
+    return handleAddMusicFeed(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/radio-music-feeds") {
+    return handleListMusicFeeds(env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/radio-music-feeds/remove") {
+    return handleRemoveMusicFeed(request, env);
   }
   if (request.method === "POST" && url.pathname === "/api/radio-playlist") {
     return handleAddPlaylistEpisode(request, env);

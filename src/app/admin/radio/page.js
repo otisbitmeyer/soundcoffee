@@ -11,10 +11,16 @@ import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
  * episodes directly to the featured playlist — fetches lazily, only
  * once actually clicked, reusing the same preview endpoint used for
  * adding a brand new feed. */
-function CuratedPodcastRow({ podcast, addingEpisodeGuid, onAddEpisode, onRemove }) {
+/** A curated feed's row (podcast or music), expandable to browse and
+ * add its own episodes/tracks directly to the featured playlist —
+ * fetches lazily, only once actually clicked, reusing the same
+ * preview endpoint used for adding a brand new feed. Paginated 10 at
+ * a time, same "load more" pattern as the public episode lists. */
+function CuratedFeedRow({ feed, previewEndpoint, addingEpisodeGuid, onAddEpisode, onRemove, showPodcastAddButton = true }) {
   const [expanded, setExpanded] = useState(false);
   const [episodes, setEpisodes] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(10);
 
   async function toggleExpand() {
     const next = !expanded;
@@ -22,7 +28,7 @@ function CuratedPodcastRow({ podcast, addingEpisodeGuid, onAddEpisode, onRemove 
     if (next && episodes === null) {
       setLoading(true);
       try {
-        const res = await fetch(`/api/radio-podcasts/preview?url=${encodeURIComponent(podcast.feedUrl)}`);
+        const res = await fetch(`${previewEndpoint}?url=${encodeURIComponent(feed.feedUrl)}`);
         const data = await res.json();
         setEpisodes(data.recentEpisodes || []);
       } catch {
@@ -33,17 +39,20 @@ function CuratedPodcastRow({ podcast, addingEpisodeGuid, onAddEpisode, onRemove 
     }
   }
 
+  const visibleEpisodes = episodes?.slice(0, visibleCount) || [];
+  const hasMore = episodes && visibleCount < episodes.length;
+
   return (
     <div className="border border-ink/15">
       <div className="flex items-center justify-between px-3 py-2">
         <button onClick={toggleExpand} className="flex flex-1 items-center gap-3 text-left">
-          {podcast.image && (
+          {feed.image && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={podcast.image} alt="" className="h-8 w-8 border border-ink/20 object-cover" />
+            <img src={feed.image} alt="" className="h-8 w-8 border border-ink/20 object-cover" />
           )}
           <p className="font-serif text-sm text-ink">
-            {podcast.name}
-            {!podcast.recipientPubkey && (
+            {feed.name}
+            {!feed.recipientPubkey && (
               <span className="ml-2 font-display text-[10px] tracking-widest text-rust">
                 NO ZAP RECIPIENT SET
               </span>
@@ -52,7 +61,7 @@ function CuratedPodcastRow({ podcast, addingEpisodeGuid, onAddEpisode, onRemove 
           <span className="font-display text-xs text-ink/40">{expanded ? "▲" : "▼"}</span>
         </button>
         <button
-          onClick={() => onRemove(podcast.feedUrl)}
+          onClick={() => onRemove(feed.feedUrl)}
           className="shrink-0 font-display text-xs tracking-widest text-rust hover:text-ink"
         >
           REMOVE
@@ -65,33 +74,35 @@ function CuratedPodcastRow({ podcast, addingEpisodeGuid, onAddEpisode, onRemove 
           {!loading && episodes?.length === 0 && (
             <p className="font-serif text-xs italic text-ink/40">No episodes found.</p>
           )}
-          {!loading && episodes?.length > 0 && (
+          {!loading && visibleEpisodes.length > 0 && (
             <div className="space-y-1.5">
-              {episodes.map((ep) => (
+              {visibleEpisodes.map((ep) => (
                 <div key={ep.guid} className="flex items-center justify-between gap-2 border border-ink/10 px-2 py-1.5">
                   <p className="truncate font-serif text-xs text-ink">{ep.title}</p>
                   <div className="flex shrink-0 gap-2">
-                    <button
-                      onClick={() =>
-                        onAddEpisode(ep, "podcast_episode", {
-                          feedUrl: podcast.feedUrl,
-                          feedName: podcast.name,
-                          feedImage: podcast.image,
-                          npub: podcast.recipientPubkey,
-                        })
-                      }
-                      disabled={addingEpisodeGuid === ep.guid || !ep.audioUrl}
-                      className="font-display text-[10px] tracking-widest text-jade hover:text-ink disabled:opacity-40"
-                    >
-                      {addingEpisodeGuid === ep.guid ? "…" : "+ ADD"}
-                    </button>
+                    {showPodcastAddButton && (
+                      <button
+                        onClick={() =>
+                          onAddEpisode(ep, "podcast_episode", {
+                            feedUrl: feed.feedUrl,
+                            feedName: feed.name,
+                            feedImage: feed.image,
+                            npub: feed.recipientPubkey,
+                          })
+                        }
+                        disabled={addingEpisodeGuid === ep.guid || !ep.audioUrl}
+                        className="font-display text-[10px] tracking-widest text-jade hover:text-ink disabled:opacity-40"
+                      >
+                        {addingEpisodeGuid === ep.guid ? "…" : "+ ADD"}
+                      </button>
+                    )}
                     <button
                       onClick={() =>
                         onAddEpisode(ep, "music_track", {
-                          feedUrl: podcast.feedUrl,
-                          feedName: podcast.name,
-                          feedImage: podcast.image,
-                          npub: podcast.recipientPubkey,
+                          feedUrl: feed.feedUrl,
+                          feedName: feed.name,
+                          feedImage: feed.image,
+                          npub: feed.recipientPubkey,
                         })
                       }
                       disabled={addingEpisodeGuid === ep.guid || !ep.audioUrl}
@@ -102,6 +113,16 @@ function CuratedPodcastRow({ podcast, addingEpisodeGuid, onAddEpisode, onRemove 
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+          {hasMore && (
+            <div className="pt-2 text-center">
+              <button
+                onClick={() => setVisibleCount((c) => c + 10)}
+                className="font-display text-[10px] tracking-widest text-ink/50 hover:text-ink"
+              >
+                LOAD 10 MORE
+              </button>
             </div>
           )}
         </div>
@@ -116,6 +137,7 @@ export default function AdminRadio() {
   const isRightAccount = pubkey === SOUND_COFFEE_PUBKEY;
 
   const [podcasts, setPodcasts] = useState(null);
+  const [musicFeeds, setMusicFeeds] = useState(null);
   const [playlist, setPlaylist] = useState(null);
   const [feedUrlInput, setFeedUrlInput] = useState("");
   const [npubInput, setNpubInput] = useState("");
@@ -124,12 +146,78 @@ export default function AdminRadio() {
   const [previewError, setPreviewError] = useState("");
   const [adding, setAdding] = useState(false);
   const [addingEpisodeGuid, setAddingEpisodeGuid] = useState(null);
+  const [musicFeedUrlInput, setMusicFeedUrlInput] = useState("");
+  const [musicPreview, setMusicPreview] = useState(null);
+  const [musicPreviewLoading, setMusicPreviewLoading] = useState(false);
+  const [musicPreviewError, setMusicPreviewError] = useState("");
+  const [addingMusicFeed, setAddingMusicFeed] = useState(false);
 
   useEffect(() => {
     if (!isRightAccount) return;
     fetchPodcasts();
     fetchPlaylist();
+    fetchMusicFeeds();
   }, [isRightAccount]);
+
+  async function fetchMusicFeeds() {
+    try {
+      const res = await fetch("/api/radio-music-feeds");
+      const data = await res.json();
+      setMusicFeeds(data.feeds || []);
+    } catch {
+      setMusicFeeds([]);
+    }
+  }
+
+  async function handlePreviewMusicFeed() {
+    if (!musicFeedUrlInput.trim()) return;
+    setMusicPreviewLoading(true);
+    setMusicPreviewError("");
+    setMusicPreview(null);
+    try {
+      const res = await fetch(`/api/radio-podcasts/preview?url=${encodeURIComponent(musicFeedUrlInput.trim())}`);
+      const data = await res.json();
+      if (data.error) {
+        setMusicPreviewError(data.error);
+      } else {
+        setMusicPreview(data);
+      }
+    } catch {
+      setMusicPreviewError("Couldn't reach that feed — check the URL and try again.");
+    } finally {
+      setMusicPreviewLoading(false);
+    }
+  }
+
+  async function handleAddMusicFeed() {
+    if (!musicPreview) return;
+    setAddingMusicFeed(true);
+    try {
+      await fetch("/api/radio-music-feeds", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          feedUrl: musicFeedUrlInput.trim(),
+          name: musicPreview.name,
+          image: musicPreview.image,
+        }),
+      });
+      setMusicFeedUrlInput("");
+      setMusicPreview(null);
+      await fetchMusicFeeds();
+    } finally {
+      setAddingMusicFeed(false);
+    }
+  }
+
+  async function handleRemoveMusicFeed(feedUrl) {
+    await fetch("/api/radio-music-feeds/remove", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedUrl }),
+    });
+    fetchMusicFeeds();
+  }
 
   async function fetchPlaylist() {
     try {
@@ -410,12 +498,90 @@ export default function AdminRadio() {
                     </p>
                   )}
                   {podcasts?.map((p) => (
-                    <CuratedPodcastRow
+                    <CuratedFeedRow
                       key={p.feedUrl}
-                      podcast={p}
+                      feed={p}
+                      previewEndpoint="/api/radio-podcasts/preview"
                       addingEpisodeGuid={addingEpisodeGuid}
                       onAddEpisode={handleAddEpisode}
                       onRemove={handleRemove}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-8 border-t border-ink/10 pt-6">
+                <p className="font-display text-sm text-ink">Music feeds</p>
+                <p className="mt-1 font-serif text-xs text-ink/60">
+                  Curated separately for repeat access — these never show
+                  up in Listening Lair&rsquo;s podcast list, only the
+                  featured playlist when you add a track from one.
+                </p>
+
+                <div className="mt-3 space-y-2 border border-ink/15 p-3">
+                  <div className="flex gap-2">
+                    <input
+                      value={musicFeedUrlInput}
+                      onChange={(e) => {
+                        setMusicFeedUrlInput(e.target.value);
+                        setMusicPreview(null);
+                        setMusicPreviewError("");
+                      }}
+                      onKeyDown={(e) => e.key === "Enter" && handlePreviewMusicFeed()}
+                      placeholder="https://example.com/music-feed.xml"
+                      className="flex-1 border-2 border-ink/30 px-3 py-2 font-mono text-xs focus:border-ink focus:outline-none"
+                    />
+                    <button
+                      onClick={handlePreviewMusicFeed}
+                      disabled={musicPreviewLoading}
+                      className="border-2 border-ink px-4 py-2 font-display text-xs tracking-widest text-ink hover:border-jade hover:text-jade disabled:opacity-50"
+                    >
+                      {musicPreviewLoading ? "…" : "PREVIEW"}
+                    </button>
+                  </div>
+
+                  {musicPreviewError && (
+                    <p className="font-serif text-xs text-rust">{musicPreviewError}</p>
+                  )}
+
+                  {musicPreview && (
+                    <div className="border-2 border-jade/40 bg-jade/5 p-3">
+                      <div className="flex items-center gap-3">
+                        {musicPreview.image && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={musicPreview.image} alt="" className="h-12 w-12 border border-ink/20 object-cover" />
+                        )}
+                        <p className="font-display text-sm text-ink">{musicPreview.name}</p>
+                      </div>
+                      <button
+                        onClick={handleAddMusicFeed}
+                        disabled={addingMusicFeed}
+                        className="mt-3 w-full border-2 border-ink bg-ink px-4 py-2 font-display text-xs tracking-widest text-paper hover:bg-jade hover:border-jade disabled:opacity-50"
+                      >
+                        {addingMusicFeed ? "ADDING…" : "+ ADD TO MUSIC FEEDS"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  {musicFeeds === null && (
+                    <p className="font-serif text-xs italic text-ink/40">Loading…</p>
+                  )}
+                  {musicFeeds?.length === 0 && (
+                    <p className="font-serif text-xs italic text-ink/40">
+                      No music feeds added yet.
+                    </p>
+                  )}
+                  {musicFeeds?.map((f) => (
+                    <CuratedFeedRow
+                      key={f.feedUrl}
+                      feed={f}
+                      previewEndpoint="/api/radio-podcasts/preview"
+                      addingEpisodeGuid={addingEpisodeGuid}
+                      onAddEpisode={handleAddEpisode}
+                      onRemove={handleRemoveMusicFeed}
+                      showPodcastAddButton={false}
                     />
                   ))}
                 </div>
