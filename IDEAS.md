@@ -5,6 +5,43 @@ these up whenever it's actually time.
 
 ---
 
+## Podcast digest bot — paused
+
+A standalone Cloudflare Worker (`workers/podcast-digest/`) that checks
+four RSS feeds daily — Chad and Reeds Podcast, Open Markets Podcast,
+Local Bitcoiners, and a generic Podhome show — summarizes any new
+episode via Claude, and publishes a combined daily digest note to
+Nostr under a dedicated bot identity.
+
+**Why paused:** none of the four tracked feeds are Sound Coffee's own
+show — this is a community-awareness tool covering other podcasts in
+the space, not something promoting this show specifically. On
+reflection, not clearly worth the real setup cost it required: a new
+bot identity, a separate Anthropic API account with its own billing,
+and a whole new Cloudflare Worker connected to this repo. Came from an
+uploaded spec document, not something designed in conversation — code
+was reviewed carefully and one real correctness fix was made (relay
+publishing swapped from a raw WebSocket implementation to SimplePool,
+matching the main Worker's already-proven approach — Cloudflare's own
+docs genuinely conflict on whether outbound WebSocket connections are
+reliable in Workers).
+
+**Current state:** code exists in `workers/podcast-digest/` in this
+repo, already pushed. Not deployed anywhere, no KV namespace created,
+no secrets set — genuinely inert, not costing anything or running
+anywhere right now.
+
+**To actually resume this:** create the `DIGEST_KV` namespace, connect
+a new Worker to this repo with root directory `workers/podcast-digest`
+(Cloudflare's Workers Builds supports this the same way Pages does —
+no local clone needed, matches how everything else in this project
+gets deployed), set `BOT_NSEC` (a freshly generated, separate bot
+identity — soundcoffee.org's own CREATE NEW key generator works fine
+for this) and `ANTHROPIC_API_KEY` as real Secrets, and test via its
+`/run` endpoint before waiting on the daily cron.
+
+---
+
 ## Sticky global audio player & basic radio queue
 
 **Status: steps 1-3 built and live.** Global player context with
