@@ -241,6 +241,7 @@ export default function SellPage() {
   // only published if a shipping price is given. One option, shared
   // across all variations of a product.
   const [shipPrice, setShipPrice] = useState("");
+  const [shipEditDiag, setShipEditDiag] = useState(null);
   const [shipCurrency, setShipCurrency] = useState("USD");
   const [shipCountry, setShipCountry] = useState("US");
   const [shipService, setShipService] = useState("standard");
@@ -490,6 +491,7 @@ export default function SellPage() {
     if (listing.shippingCost) {
       setShipPrice(listing.shippingCost.amount || "");
       setShipCurrency(listing.shippingCost.currency || "USD");
+      setShipEditDiag({ path: "inline shippingCost found directly", coords: null, result: null });
     } else if (listing.shippingOptionCoords?.[0]) {
       // Every listing published through this page stores shipping as a
       // separate relay event, not inline — same gap already found and
@@ -497,17 +499,26 @@ export default function SellPage() {
       // doesn't show an empty field for shipping that's actually set.
       setShipPrice("");
       setShipCurrency("USD");
+      setShipEditDiag({
+        path: "resolving via shippingOptionCoords",
+        coords: listing.shippingOptionCoords[0],
+        result: "fetching…",
+      });
       fetchShippingOption(listing.shippingOptionCoords[0])
         .then((option) => {
+          setShipEditDiag((prev) => ({ ...prev, result: JSON.stringify(option) }));
           if (option?.price) {
             setShipPrice(option.price.amount || "");
             setShipCurrency(option.price.currency || "USD");
           }
         })
-        .catch(() => {});
+        .catch((e) => {
+          setShipEditDiag((prev) => ({ ...prev, result: `ERROR: ${e.message}` }));
+        });
     } else {
       setShipPrice("");
       setShipCurrency("USD");
+      setShipEditDiag({ path: "no shippingCost or shippingOptionCoords found on listing at all", coords: null, result: null });
     }
     setEditingDTag(listing.dTag);
     setStatus("form");
@@ -863,6 +874,19 @@ export default function SellPage() {
                       </select>
                     </div>
                   </div>
+
+                  {editingDTag && shipEditDiag && (
+                    <details className="mt-3 border border-ink/15 text-xs text-ink/60">
+                      <summary className="cursor-pointer select-none px-3 py-2 font-display tracking-widest text-ink/40 marker:content-none [&::-webkit-details-marker]:hidden">
+                        ▸ SHIPPING EDIT DIAGNOSTIC
+                      </summary>
+                      <div className="space-y-1 border-t border-ink/10 px-3 py-2 font-mono text-[11px]">
+                        <p>path: {shipEditDiag.path}</p>
+                        {shipEditDiag.coords && <p>coordinate: {shipEditDiag.coords}</p>}
+                        {shipEditDiag.result && <p>result: {shipEditDiag.result}</p>}
+                      </div>
+                    </details>
+                  )}
                 </div>
               )}
 

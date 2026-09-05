@@ -40,6 +40,22 @@ function getTag(event, name) {
   return event.tags.find((t) => t[0] === name);
 }
 
+function formatAddressValue(value) {
+  if (!value) return null;
+  if (typeof value === "string") return value;
+  // Some apps (Conduit included) send a structured address object
+  // instead of a plain string — same shipping info, different
+  // convention. Formatting it into a readable string here, once, at
+  // the source, rather than leaving a raw object to crash whatever
+  // eventually tries to render it directly.
+  if (typeof value === "object") {
+    return [value.name, value.street, [value.city, value.state, value.postalCode].filter(Boolean).join(", "), value.country]
+      .filter(Boolean)
+      .join("\n");
+  }
+  return String(value);
+}
+
 function parseOrder(rumor) {
   if (rumor.kind !== 16 && rumor.kind !== 4) return null;
   const typeTag = getTag(rumor, "type");
@@ -69,12 +85,13 @@ function parseOrder(rumor) {
       coordinate: t[1],
       quantity: t[2] || "1",
     })),
-    address:
+    address: formatAddressValue(
       getTag(rumor, "address")?.[1] ||
-      contentJson?.address ||
-      contentJson?.shippingAddress ||
-      contentJson?.shipping?.address ||
-      null,
+        contentJson?.address ||
+        contentJson?.shippingAddress ||
+        contentJson?.shipping?.address ||
+        null
+    ),
     email: getTag(rumor, "email")?.[1] || contentJson?.email || contentJson?.buyerEmail || null,
     phone: getTag(rumor, "phone")?.[1] || contentJson?.phone || null,
     notes: contentJson ? contentJson.notes || contentJson.message || "" : rumor.content || "",
