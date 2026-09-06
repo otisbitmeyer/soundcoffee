@@ -72,6 +72,10 @@ export function parseListing(event) {
     shippingCost,
     specs,
     parentCoordinate,
+    // Some publishing apps (Conduit's event/market listings included)
+    // explicitly mark a listing as not meant for general display —
+    // scoped to a specific event rather than the general shop.
+    visibility: getTag(event, "visibility") || "public",
     images,
     hashtags: getAllTags(event, "t").map((t) => t[1]),
     createdAt: event.created_at,

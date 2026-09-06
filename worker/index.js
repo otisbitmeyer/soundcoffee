@@ -1594,34 +1594,6 @@ async function handleReorderPlaylist(request, env) {
  * prefix (no guessing needed), and makes one safe, read-only API call
  * to confirm the key actually works, without touching anything.
  */
-/**
- * Direct diagnostic — fetches every NIP-99 listing (kind 30402) from
- * Sound Coffee's own pubkey with full raw tags, to actually see what
- * distinguishes one listing from another rather than guessing. Not a
- * permanent feature — a one-time investigation tool.
- */
-async function handleDebugListings(env) {
-  const pool = new SimplePool();
-  try {
-    const events = await pool.querySync(ZAP_SEARCH_RELAYS, {
-      kinds: [30402],
-      authors: [SOUND_COFFEE_PUBKEY],
-    });
-    return jsonResponse({
-      count: events.length,
-      listings: events.map((e) => ({
-        id: e.id,
-        created_at: e.created_at,
-        created_at_readable: new Date(e.created_at * 1000).toISOString(),
-        tags: e.tags,
-        content: e.content?.slice(0, 200),
-      })),
-    });
-  } finally {
-    pool.close(ZAP_SEARCH_RELAYS);
-  }
-}
-
 async function handleTestStripeConfig(env) {
   const diag = {
     stripeSecretKeyPresent: !!env.STRIPE_SECRET_KEY,
@@ -1900,9 +1872,6 @@ async function handleFetch(request, env) {
   }
   if (request.method === "GET" && url.pathname === "/api/test-email") {
     return handleTestEmail(env);
-  }
-  if (request.method === "GET" && url.pathname === "/api/debug-listings") {
-    return handleDebugListings(env);
   }
   if (request.method === "GET" && url.pathname === "/api/test-stripe-config") {
     return handleTestStripeConfig(env);

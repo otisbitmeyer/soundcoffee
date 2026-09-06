@@ -51,7 +51,12 @@ function SellerListings({ seller }) {
     );
   }
 
-  if (!listings || listings.length === 0) {
+  // Some listings (event-specific ones from Conduit's market/event
+  // feature, for instance) are explicitly marked not meant for general
+  // display — scoped to a particular event rather than the shop itself.
+  const visibleListings = listings?.filter((l) => l.visibility !== "hidden") || [];
+
+  if (!listings || visibleListings.length === 0) {
     return (
       <p className="mt-12 font-serif italic text-ink/50">
         No products listed yet &mdash; check back soon.
@@ -64,7 +69,7 @@ function SellerListings({ seller }) {
       className="mt-12 grid justify-center gap-8"
       style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 300px))" }}
     >
-      {listings.map((listing) => (
+      {visibleListings.map((listing) => (
         <ProductCard
           key={listing.id}
           listing={listing}
