@@ -428,6 +428,41 @@ reliable payment verification, NWC, and the V4V 2.0 bot.
 
 ---
 
+## Operation Make Keysend Used Again
+
+Research keysend — the Lightning payment method that sends sats
+directly to a node's pubkey, no invoice needed first. It's the
+mechanism a lot of Podcasting 2.0 boost apps (Fountain included) use
+under the hood for streaming sats/boosts, and it's directly connected
+to a real gap already found this project: Fountain's own Nostr
+sharing is opt-in per action, so a real share of what shows up inside
+Fountain as a boost never becomes a Nostr event at all — it only
+exists as a keysend payment. localbitcoiners.com's own bot catches
+these anyway because it watches their Lightning node's incoming
+payments directly, not because it's reading Nostr.
+
+**Why this connects to the Lightning infrastructure decision above,
+not separately:** keysend support isn't something an LNURL-pay-style
+wallet (Minibits included) offers — it requires an actual node with
+real keysend support, same requirement as NWC and LUD-21 verification.
+Whichever way that decision goes (Alby Hub, BTCPay, etc.), keysend
+capability should be part of what's actually checked for, not assumed.
+
+**What "research" actually means here, not yet done:**
+- Confirm whether the specific infrastructure choice above (Alby Hub
+  was the leading recommendation) actually supports receiving keysend
+  payments, and what's involved in detecting one when it arrives
+- Understand the TLV record structure Podcasting 2.0 keysend boosts
+  use for their boost metadata (sender name, message, episode
+  reference) — this is a different metadata shape than a Nostr zap
+  request's content field, would need its own parsing
+- Decide whether a keysend-based boost should feed into the exact
+  same episode-zap system already built, or needs to stay a distinct
+  category given it has no cryptographic signature the way a NIP-57
+  zap receipt does
+
+---
+
 ## Editing individual product variations
 
 `/sell` supports editing simple listings and variable-product parent
