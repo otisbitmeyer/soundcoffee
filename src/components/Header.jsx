@@ -91,13 +91,13 @@ export default function Header() {
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4 sm:gap-3">
             <CartButton className="relative text-ink hover:text-rust" />
 
             {playlistEpisodes.length > 0 && (
               <button
                 onClick={handlePlayStation}
-                className="border-2 border-jade bg-jade px-3 py-2 font-display text-xs tracking-widest text-ink transition hover:bg-transparent hover:text-jade"
+                className="border-2 border-jade bg-jade px-[9px] py-1.5 font-display text-[9px] tracking-widest text-ink transition hover:bg-transparent hover:text-jade sm:px-3 sm:py-2 sm:text-xs"
               >
                 ▶ SC RADIO
               </button>
@@ -171,7 +171,7 @@ export default function Header() {
             ) : (
               <button
                 onClick={() => setModalOpen(true)}
-                className="border-2 border-ink bg-ink px-4 py-2 font-display text-sm tracking-widest text-paper transition hover:bg-rust hover:border-rust"
+                className="border-2 border-ink bg-ink px-3 py-1.5 font-display text-[11px] tracking-widest text-paper transition hover:bg-rust hover:border-rust sm:px-4 sm:py-2 sm:text-sm"
               >
                 LOG IN
               </button>

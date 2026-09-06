@@ -1505,11 +1505,11 @@ async function handleAddPlaylistEpisode(request, env) {
   }
   const type = trackType === "music_track" ? "music_track" : "podcast_episode";
 
-  // New tracks go to the end of the current order by default.
-  const maxOrderRow = await env.DB.prepare(
-    `SELECT MAX(sort_order) as maxOrder FROM radio_playlist_episodes`
+  // New tracks go to the front of the list, not the end.
+  const minOrderRow = await env.DB.prepare(
+    `SELECT MIN(sort_order) as minOrder FROM radio_playlist_episodes`
   ).first();
-  const nextOrder = (maxOrderRow?.maxOrder ?? 0) + 1;
+  const nextOrder = (minOrderRow?.minOrder ?? 0) - 1;
 
   await env.DB.prepare(
     `INSERT INTO radio_playlist_episodes (guid, feed_url, title, audio_url, image, chapters_url, feed_name, recipient_pubkey, track_type, sort_order, added_at)
