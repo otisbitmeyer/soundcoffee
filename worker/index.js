@@ -1269,12 +1269,35 @@ async function handleValidateDiscount(request, env) {
 }
 
 async function handleRedeemDiscount(request, env) {
-  const { code } = await request.json();
+  const { code, buyerPubkey, orderId } = await request.json();
   if (!code) return jsonResponse({ error: "Missing code." }, 422);
+  const normalizedCode = code.trim().toUpperCase();
+
   await env.DB.prepare(`UPDATE discount_codes SET uses_count = uses_count + 1 WHERE code = ?`)
-    .bind(code.trim().toUpperCase())
+    .bind(normalizedCode)
     .run();
+
+  await env.DB.prepare(
+    `INSERT INTO discount_code_uses (code, buyer_pubkey, order_id, used_at) VALUES (?, ?, ?, ?)`
+  )
+    .bind(normalizedCode, buyerPubkey || null, orderId || null, Date.now())
+    .run();
+
   return jsonResponse({ ok: true });
+}
+
+async function handleListDiscountUses(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM discount_code_uses ORDER BY used_at DESC LIMIT 200`
+  ).all();
+  return jsonResponse({
+    uses: results.map((u) => ({
+      code: u.code,
+      buyerPubkey: u.buyer_pubkey,
+      orderId: u.order_id,
+      usedAt: u.used_at,
+    })),
+  });
 }
 
 // ---------------------------------------------------------------------
@@ -1857,6 +1880,9 @@ async function handleFetch(request, env) {
   }
   if (request.method === "POST" && url.pathname === "/api/discounts/redeem") {
     return handleRedeemDiscount(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/discounts/uses") {
+    return handleListDiscountUses(env);
   }
   if (request.method === "GET" && url.pathname === "/api/podcast-feed") {
     return handlePodcastFeed(request, env);

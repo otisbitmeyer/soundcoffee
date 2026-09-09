@@ -20,6 +20,7 @@ export default function AdminPage() {
   const [existingPaymentPref, setExistingPaymentPref] = useState(null);
 
   const [discounts, setDiscounts] = useState(null);
+  const [discountUses, setDiscountUses] = useState(null);
   const [newCode, setNewCode] = useState("");
   const [newType, setNewType] = useState("percent");
   const [newValue, setNewValue] = useState("");
@@ -71,6 +72,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (!isRightAccount) return;
     fetchDiscounts();
+    fetchDiscountUses();
   }, [isRightAccount]);
 
   async function fetchDiscounts() {
@@ -80,6 +82,16 @@ export default function AdminPage() {
       setDiscounts(data.discounts || []);
     } catch {
       setDiscounts([]);
+    }
+  }
+
+  async function fetchDiscountUses() {
+    try {
+      const res = await fetch("/api/discounts/uses");
+      const data = await res.json();
+      setDiscountUses(data.uses || []);
+    } catch {
+      setDiscountUses([]);
     }
   }
 
@@ -443,6 +455,31 @@ export default function AdminPage() {
                         )}
                       </div>
                     ))}
+                  </div>
+
+                  <div className="mt-4 border-t border-ink/10 pt-3">
+                    <p className="font-display text-xs tracking-widest text-ink/50">
+                      RECENT USES
+                    </p>
+                    <div className="mt-2 max-h-64 space-y-1 overflow-y-auto">
+                      {discountUses === null && (
+                        <p className="font-serif text-xs italic text-ink/40">Loading…</p>
+                      )}
+                      {discountUses?.length === 0 && (
+                        <p className="font-serif text-xs italic text-ink/40">No codes used yet.</p>
+                      )}
+                      {discountUses?.map((u, i) => (
+                        <div key={i} className="flex items-center justify-between border border-ink/10 px-2 py-1 font-mono text-[11px] text-ink/70">
+                          <span>{u.code}</span>
+                          <span className="truncate px-2 text-ink/40">
+                            {u.buyerPubkey ? `${u.buyerPubkey.slice(0, 12)}…` : "guest"}
+                          </span>
+                          <span className="shrink-0 text-ink/40">
+                            {new Date(u.usedAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>

@@ -388,7 +388,11 @@ export default function CheckoutModal({ onClose }) {
         fetch("/api/discounts/redeem", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: appliedDiscount.code }),
+          body: JSON.stringify({
+            code: appliedDiscount.code,
+            buyerPubkey: identity.isGuest ? null : identity.pubkey,
+            orderId: newOrderId,
+          }),
         }).catch(() => {});
       }
       if (combinedAddress) orderTags.push(["address", combinedAddress]);
