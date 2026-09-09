@@ -149,6 +149,13 @@ export default function Header() {
                           ORDERS
                         </Link>
                         <Link
+                          href="/admin/dashboard"
+                          onClick={() => setMenuOpen(false)}
+                          className="block border-t border-ink/10 px-4 py-3 text-ink hover:bg-ink hover:text-paper"
+                        >
+                          DASHBOARD
+                        </Link>
+                        <Link
                           href="/admin"
                           onClick={() => setMenuOpen(false)}
                           className="block border-t border-ink/10 px-4 py-3 text-ink hover:bg-ink hover:text-paper"

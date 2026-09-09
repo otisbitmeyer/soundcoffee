@@ -1301,6 +1301,116 @@ async function handleListDiscountUses(env) {
 }
 
 // ---------------------------------------------------------------------
+// Coffee Club — membership automatically entitles a buyer to a
+// discount at checkout, recognized by their logged-in pubkey, not a
+// code they have to type in.
+// ---------------------------------------------------------------------
+
+async function handleAddCoffeeClubMember(request, env) {
+  const { pubkey, discountPercent, notes } = await request.json();
+  if (!pubkey || discountPercent == null) {
+    return jsonResponse({ error: "Missing pubkey or discountPercent." }, 422);
+  }
+  await env.DB.prepare(
+    `INSERT INTO coffee_club_members (pubkey, discount_percent, notes, joined_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(pubkey) DO UPDATE SET discount_percent = excluded.discount_percent, notes = excluded.notes`
+  )
+    .bind(pubkey, discountPercent, notes || null, Date.now())
+    .run();
+  return jsonResponse({ ok: true });
+}
+
+async function handleListCoffeeClubMembers(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM coffee_club_members ORDER BY joined_at ASC`
+  ).all();
+  return jsonResponse({
+    members: results.map((m) => ({
+      pubkey: m.pubkey,
+      discountPercent: m.discount_percent,
+      notes: m.notes,
+      joinedAt: m.joined_at,
+    })),
+  });
+}
+
+async function handleRemoveCoffeeClubMember(request, env) {
+  const { pubkey } = await request.json();
+  if (!pubkey) return jsonResponse({ error: "Missing pubkey." }, 422);
+  await env.DB.prepare(`DELETE FROM coffee_club_members WHERE pubkey = ?`).bind(pubkey).run();
+  return jsonResponse({ ok: true });
+}
+
+/** Checked at checkout — is this logged-in buyer a member, and if so
+ * what's their discount. No code needed, recognized purely by pubkey. */
+async function handleCheckCoffeeClubMember(request, env) {
+  const url = new URL(request.url);
+  const pubkey = url.searchParams.get("pubkey");
+  if (!pubkey) return jsonResponse({ isMember: false });
+  const member = await env.DB.prepare(`SELECT discount_percent FROM coffee_club_members WHERE pubkey = ?`)
+    .bind(pubkey)
+    .first();
+  if (!member) return jsonResponse({ isMember: false });
+  return jsonResponse({ isMember: true, discountPercent: member.discount_percent });
+}
+
+// ---------------------------------------------------------------------
+// Sales dashboard — aggregates the orders table already recorded at
+// checkout. Sats and dollar totals are kept separate (real currencies
+// paid, not converted into a blended number), and guest/unattributed
+// orders show as their own bucket rather than being force-fit onto a
+// fake identity.
+// ---------------------------------------------------------------------
+
+async function handleSalesSummary(request, env) {
+  const url = new URL(request.url);
+  const from = Number(url.searchParams.get("from")) || 0;
+  const to = Number(url.searchParams.get("to")) || Date.now();
+
+  const { results } = await env.DB.prepare(
+    `SELECT customer_pubkey, is_guest, payment_method, amount_sats, amount_usd_cents, created_at
+     FROM orders
+     WHERE payment_status = 'paid' AND created_at >= ? AND created_at <= ?`
+  )
+    .bind(from, to)
+    .all();
+
+  let totalSats = 0;
+  let totalUsdCents = 0;
+  let guestSats = 0;
+  let guestUsdCents = 0;
+  const byBuyer = {}; // pubkey -> { sats, usdCents, orderCount }
+
+  for (const o of results) {
+    if (o.payment_method === "lightning" && o.amount_sats) totalSats += o.amount_sats;
+    if (o.payment_method === "card" && o.amount_usd_cents) totalUsdCents += o.amount_usd_cents;
+
+    const isRealBuyer = !o.is_guest && o.customer_pubkey;
+    if (!isRealBuyer) {
+      if (o.payment_method === "lightning") guestSats += o.amount_sats || 0;
+      if (o.payment_method === "card") guestUsdCents += o.amount_usd_cents || 0;
+      continue;
+    }
+    if (!byBuyer[o.customer_pubkey]) {
+      byBuyer[o.customer_pubkey] = { pubkey: o.customer_pubkey, sats: 0, usdCents: 0, orderCount: 0 };
+    }
+    byBuyer[o.customer_pubkey].sats += o.payment_method === "lightning" ? o.amount_sats || 0 : 0;
+    byBuyer[o.customer_pubkey].usdCents += o.payment_method === "card" ? o.amount_usd_cents || 0 : 0;
+    byBuyer[o.customer_pubkey].orderCount += 1;
+  }
+
+  return jsonResponse({
+    totalSats,
+    totalUsdCents,
+    guestSats,
+    guestUsdCents,
+    orderCount: results.length,
+    byBuyer: Object.values(byBuyer).sort((a, b) => b.sats + b.usdCents / 100 - (a.sats + a.usdCents / 100)),
+  });
+}
+
+// ---------------------------------------------------------------------
 // Podcast feed proxy — replaces rss2json, whose free tier turned out to
 // be genuinely unreliable (rejects requests outright above its default
 // item count, and rate-limits aggressively even at the default). This
@@ -1883,6 +1993,21 @@ async function handleFetch(request, env) {
   }
   if (request.method === "GET" && url.pathname === "/api/discounts/uses") {
     return handleListDiscountUses(env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/coffee-club") {
+    return handleAddCoffeeClubMember(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/coffee-club") {
+    return handleListCoffeeClubMembers(env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/coffee-club/remove") {
+    return handleRemoveCoffeeClubMember(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/coffee-club/check") {
+    return handleCheckCoffeeClubMember(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/sales-summary") {
+    return handleSalesSummary(request, env);
   }
   if (request.method === "GET" && url.pathname === "/api/podcast-feed") {
     return handlePodcastFeed(request, env);

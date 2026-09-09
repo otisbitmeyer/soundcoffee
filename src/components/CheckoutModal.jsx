@@ -194,6 +194,27 @@ export default function CheckoutModal({ onClose }) {
   const [discountStatus, setDiscountStatus] = useState(null); // "checking" | "applied" | "error"
   const [discountMessage, setDiscountMessage] = useState("");
 
+  // Coffee Club membership applies automatically, recognized by the
+  // logged-in buyer's pubkey — no code to type. Only auto-applies if
+  // nothing's already been manually applied, so a deliberate code
+  // entry is never silently overridden.
+  useEffect(() => {
+    if (!isLoggedIn || !pubkey || appliedDiscount) return;
+    fetch(`/api/coffee-club/check?pubkey=${encodeURIComponent(pubkey)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.isMember) {
+          setAppliedDiscount({
+            code: "COFFEE CLUB",
+            discountType: "percent",
+            discountValue: data.discountPercent,
+          });
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoggedIn, pubkey]);
+
   async function handleApplyDiscount() {
     if (!discountCodeInput.trim()) return;
     setDiscountStatus("checking");
