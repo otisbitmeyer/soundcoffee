@@ -92,23 +92,10 @@ export default function CheckoutModal({ onClose }) {
   // carry). Previously these were silently skipped entirely in cart
   // checkout — this is what actually resolves them.
   const [resolvedShipping, setResolvedShipping] = useState({});
-  const [shippingDiag, setShippingDiag] = useState(null);
-
   useEffect(() => {
     const needsResolving = cartItems.filter(
       (i) => i.format === "physical" && !i.shippingCost && i.shippingOptionCoords?.[0]
     );
-    setShippingDiag({
-      cartItemCount: cartItems.length,
-      cartItemsSummary: cartItems.map((i) => ({
-        title: i.title,
-        format: i.format,
-        hasInlineShippingCost: !!i.shippingCost,
-        shippingOptionCoords: i.shippingOptionCoords,
-      })),
-      needsResolvingCount: needsResolving.length,
-      resolutionResults: null,
-    });
     if (needsResolving.length === 0) return;
 
     let cancelled = false;
@@ -127,7 +114,6 @@ export default function CheckoutModal({ onClose }) {
         results.map(([coord, r]) => [coord, r.success ? r.price : null])
       );
       setResolvedShipping((prev) => ({ ...prev, ...priceMap }));
-      setShippingDiag((prev) => ({ ...prev, resolutionResults: Object.fromEntries(results) }));
     });
 
     return () => {
@@ -766,30 +752,6 @@ export default function CheckoutModal({ onClose }) {
                     Already have a Nostr identity? Log in instead
                   </button>
                 </p>
-              )}
-
-              {shippingDiag && (
-                <details className="border border-ink/15 text-xs text-ink/60">
-                  <summary className="cursor-pointer select-none px-3 py-2 font-display tracking-widest text-ink/40 marker:content-none [&::-webkit-details-marker]:hidden">
-                    ▸ SHIPPING DIAGNOSTIC
-                  </summary>
-                  <div className="space-y-2 border-t border-ink/10 px-3 py-2 font-mono text-[11px]">
-                    {shippingDiag.cartItemsSummary.map((item, i) => (
-                      <div key={i} className="border-t border-ink/5 pt-1 first:border-t-0 first:pt-0">
-                        <p>title: {item.title}</p>
-                        <p>format: {item.format ?? "undefined"}</p>
-                        <p>hasInlineShippingCost: {String(item.hasInlineShippingCost)}</p>
-                        <p>shippingOptionCoords: {JSON.stringify(item.shippingOptionCoords)}</p>
-                      </div>
-                    ))}
-                    <p className="border-t border-ink/10 pt-1">
-                      needsResolvingCount: {shippingDiag.needsResolvingCount}
-                    </p>
-                    {shippingDiag.resolutionResults && (
-                      <p>resolutionResults: {JSON.stringify(shippingDiag.resolutionResults)}</p>
-                    )}
-                  </div>
-                </details>
               )}
 
               <div>
