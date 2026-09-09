@@ -5,6 +5,7 @@ import { nip19 } from "nostr-tools";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import { useAuth } from "@/context/AuthContext";
+import { useProfile } from "@/hooks/useProfile";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
 function formatSats(sats) {
@@ -26,6 +27,31 @@ function getPresetRange(preset) {
   if (preset === "30d") return { from: now - 30 * day, to: now };
   if (preset === "90d") return { from: now - 90 * day, to: now };
   return { from: 0, to: now }; // all time
+}
+
+/** Resolves a pubkey to its actual name and avatar where one exists —
+ * falls back to the shortened pubkey itself when there's no profile
+ * to find, rather than showing a broken image or blank name. */
+function ProfileLabel({ pubkey }) {
+  const { profile } = useProfile(pubkey);
+  const displayName = profile?.display_name || profile?.name;
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {profile?.picture ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={profile.picture}
+          alt=""
+          className="h-4 w-4 shrink-0 rounded-full border border-ink/20 object-cover"
+          onError={(e) => {
+            e.target.style.display = "none";
+          }}
+        />
+      ) : null}
+      <span>{displayName || shortPubkey(pubkey)}</span>
+    </span>
+  );
 }
 
 export default function AdminDashboard() {
@@ -218,7 +244,7 @@ export default function AdminDashboard() {
                           key={b.pubkey}
                           className="flex items-center justify-between border border-ink/15 px-3 py-2 font-mono text-xs"
                         >
-                          <span className="text-ink/70">{shortPubkey(b.pubkey)}</span>
+                          <span className="text-ink/70"><ProfileLabel pubkey={b.pubkey} /></span>
                           <span className="text-ink/50">{b.orderCount} order{b.orderCount === 1 ? "" : "s"}</span>
                           <span className="text-ink">
                             {b.sats > 0 && formatSats(b.sats)}
@@ -280,7 +306,7 @@ export default function AdminDashboard() {
                       className="flex items-center justify-between border border-ink/15 px-3 py-2"
                     >
                       <p className="font-mono text-xs text-ink">
-                        {shortPubkey(m.pubkey)}{" "}
+                        <ProfileLabel pubkey={m.pubkey} />{" "}
                         <span className="text-ink/50">— {m.discountPercent}% off</span>
                       </p>
                       <button
