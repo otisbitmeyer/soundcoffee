@@ -1290,10 +1290,39 @@ async function handleRedeemDiscount(request, env) {
   return jsonResponse({ ok: true });
 }
 
-async function handleListDiscountUses(env) {
+async function handleListDiscountUses(request, env) {
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code");
+  const pubkey = url.searchParams.get("pubkey");
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+
+  const conditions = [];
+  const params = [];
+  if (code) {
+    conditions.push("code = ?");
+    params.push(code.trim().toUpperCase());
+  }
+  if (pubkey) {
+    conditions.push("buyer_pubkey = ?");
+    params.push(pubkey.trim());
+  }
+  if (from) {
+    conditions.push("used_at >= ?");
+    params.push(Number(from));
+  }
+  if (to) {
+    conditions.push("used_at <= ?");
+    params.push(Number(to));
+  }
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
   const { results } = await env.DB.prepare(
-    `SELECT * FROM discount_code_uses ORDER BY used_at DESC LIMIT 200`
-  ).all();
+    `SELECT * FROM discount_code_uses ${whereClause} ORDER BY used_at DESC LIMIT 200`
+  )
+    .bind(...params)
+    .all();
+
   return jsonResponse({
     uses: results.map((u) => ({
       code: u.code,
@@ -1996,7 +2025,7 @@ async function handleFetch(request, env) {
     return handleRedeemDiscount(request, env);
   }
   if (request.method === "GET" && url.pathname === "/api/discounts/uses") {
-    return handleListDiscountUses(env);
+    return handleListDiscountUses(request, env);
   }
   if (request.method === "POST" && url.pathname === "/api/coffee-club") {
     return handleAddCoffeeClubMember(request, env);

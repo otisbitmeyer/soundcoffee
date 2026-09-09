@@ -51,6 +51,11 @@ export default function AdminPage() {
 
   const [discounts, setDiscounts] = useState(null);
   const [discountUses, setDiscountUses] = useState(null);
+  const [usageFilterCode, setUsageFilterCode] = useState("");
+  const [usageFilterUser, setUsageFilterUser] = useState("");
+  const [usageFilterPreset, setUsageFilterPreset] = useState("all");
+  const [usageFilterCustomFrom, setUsageFilterCustomFrom] = useState("");
+  const [usageFilterCustomTo, setUsageFilterCustomTo] = useState("");
   const [members, setMembers] = useState(null);
   const [newMemberNpub, setNewMemberNpub] = useState("");
   const [newMemberDiscount, setNewMemberDiscount] = useState("10");
@@ -108,9 +113,14 @@ export default function AdminPage() {
   useEffect(() => {
     if (!isRightAccount) return;
     fetchDiscounts();
-    fetchDiscountUses();
     fetchMembers();
   }, [isRightAccount]);
+
+  useEffect(() => {
+    if (!isRightAccount) return;
+    fetchDiscountUses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRightAccount, usageFilterCode, usageFilterPreset, usageFilterCustomFrom, usageFilterCustomTo]);
 
   async function fetchDiscounts() {
     try {
@@ -123,8 +133,26 @@ export default function AdminPage() {
   }
 
   async function fetchDiscountUses() {
+    const params = new URLSearchParams();
+    if (usageFilterCode) params.set("code", usageFilterCode);
+    if (usageFilterUser.trim()) params.set("pubkey", usageFilterUser.trim());
+    if (usageFilterPreset !== "all") {
+      const day = 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      let from, to;
+      if (usageFilterPreset === "custom") {
+        from = usageFilterCustomFrom ? new Date(usageFilterCustomFrom).getTime() : null;
+        to = usageFilterCustomTo ? new Date(usageFilterCustomTo).getTime() + day - 1 : now;
+      } else {
+        const days = { "7d": 7, "30d": 30, "90d": 90 }[usageFilterPreset];
+        from = now - days * day;
+        to = now;
+      }
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+    }
     try {
-      const res = await fetch("/api/discounts/uses");
+      const res = await fetch(`/api/discounts/uses?${params.toString()}`);
       const data = await res.json();
       setDiscountUses(data.uses || []);
     } catch {
@@ -552,31 +580,6 @@ export default function AdminPage() {
                       </div>
                     ))}
                   </div>
-
-                  <div className="mt-4 border-t border-ink/10 pt-3">
-                    <p className="font-display text-xs tracking-widest text-ink/50">
-                      RECENT USES
-                    </p>
-                    <div className="mt-2 max-h-64 space-y-1 overflow-y-auto">
-                      {discountUses === null && (
-                        <p className="font-serif text-xs italic text-ink/40">Loading…</p>
-                      )}
-                      {discountUses?.length === 0 && (
-                        <p className="font-serif text-xs italic text-ink/40">No codes used yet.</p>
-                      )}
-                      {discountUses?.map((u, i) => (
-                        <div key={i} className="flex items-center justify-between border border-ink/10 px-2 py-1 font-mono text-[11px] text-ink/70">
-                          <span>{u.code}</span>
-                          <span className="truncate px-2 text-ink/40">
-                            {u.buyerPubkey ? `${u.buyerPubkey.slice(0, 12)}…` : "guest"}
-                          </span>
-                          <span className="shrink-0 text-ink/40">
-                            {new Date(u.usedAt).toLocaleDateString()}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
                 </div>
 
                 <div className="border-t border-ink/10 pt-4">
@@ -635,6 +638,97 @@ export default function AdminPage() {
                         >
                           REMOVE
                         </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="border-t border-ink/10 pt-4">
+                  <p className="font-display text-sm text-ink">Discount Usage Log</p>
+                  <p className="mt-1 font-serif text-xs text-ink/60">
+                    Every discount actually used, at checkout — codes and
+                    Coffee Club alike.
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <select
+                      value={usageFilterCode}
+                      onChange={(e) => setUsageFilterCode(e.target.value)}
+                      className="border-2 border-ink/30 px-2 py-1.5 font-mono text-xs focus:border-ink focus:outline-none"
+                    >
+                      <option value="">All discounts</option>
+                      <option value="COFFEE CLUB">COFFEE CLUB</option>
+                      {discounts?.map((d) => (
+                        <option key={d.code} value={d.code}>
+                          {d.code}
+                        </option>
+                      ))}
+                    </select>
+                    {["all", "7d", "30d", "90d", "custom"].map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => setUsageFilterPreset(p)}
+                        className={`border-2 px-3 py-1.5 font-display text-xs tracking-widest ${
+                          usageFilterPreset === p
+                            ? "border-ink bg-ink text-paper"
+                            : "border-ink/30 text-ink/60 hover:border-ink hover:text-ink"
+                        }`}
+                      >
+                        {p === "all" ? "ALL TIME" : p.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+
+                  {usageFilterPreset === "custom" && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <input
+                        type="date"
+                        value={usageFilterCustomFrom}
+                        onChange={(e) => setUsageFilterCustomFrom(e.target.value)}
+                        className="border-2 border-ink/30 px-3 py-1.5 font-mono text-xs focus:border-ink focus:outline-none"
+                      />
+                      <span className="font-serif text-xs text-ink/50">to</span>
+                      <input
+                        type="date"
+                        value={usageFilterCustomTo}
+                        onChange={(e) => setUsageFilterCustomTo(e.target.value)}
+                        className="border-2 border-ink/30 px-3 py-1.5 font-mono text-xs focus:border-ink focus:outline-none"
+                      />
+                    </div>
+                  )}
+
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      value={usageFilterUser}
+                      onChange={(e) => setUsageFilterUser(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && fetchDiscountUses()}
+                      placeholder="Filter by user — npub or hex"
+                      className="flex-1 border-2 border-ink/30 px-3 py-1.5 font-mono text-xs focus:border-ink focus:outline-none"
+                    />
+                    <button
+                      onClick={fetchDiscountUses}
+                      className="border-2 border-ink/30 px-3 py-1.5 font-display text-xs text-ink hover:border-ink"
+                    >
+                      APPLY
+                    </button>
+                  </div>
+
+                  <div className="mt-3 max-h-64 space-y-1 overflow-y-auto">
+                    {discountUses === null && (
+                      <p className="font-serif text-xs italic text-ink/40">Loading…</p>
+                    )}
+                    {discountUses?.length === 0 && (
+                      <p className="font-serif text-xs italic text-ink/40">No uses match these filters.</p>
+                    )}
+                    {discountUses?.map((u, i) => (
+                      <div key={i} className="flex items-center justify-between border border-ink/10 px-2 py-1 font-mono text-[11px] text-ink/70">
+                        <span>{u.code}</span>
+                        <span className="truncate px-2 text-ink/40">
+                          {u.buyerPubkey ? <ProfileLabel pubkey={u.buyerPubkey} /> : "guest"}
+                        </span>
+                        <span className="shrink-0 text-ink/40">
+                          {new Date(u.usedAt).toLocaleDateString()}
+                        </span>
                       </div>
                     ))}
                   </div>
