@@ -249,13 +249,21 @@ export default function CheckoutModal({ onClose }) {
   // Percent discounts apply uniformly to whichever total actually gets
   // charged; flat-dollar discounts convert to an equivalent sats
   // reduction so both payment methods stay consistent with each other.
+  // Discounts apply to the product only, never shipping — and only to
+  // whichever payment method(s) the code was actually configured for
+  // (a code can be lightning-only, card-only, or both; Coffee Club's
+  // auto-applied discount has no appliesTo set, which defaults to both).
   function applyDiscount(sats, usdCents) {
     if (!appliedDiscount || sats == null) return { sats, usdCents };
+    const appliesToSats = appliedDiscount.appliesTo !== "fiat";
+    const appliesToUsd = appliedDiscount.appliesTo !== "lightning";
+
     if (appliedDiscount.discountType === "percent") {
       const factor = 1 - appliedDiscount.discountValue / 100;
       return {
-        sats: Math.max(0, Math.round(sats * factor)),
-        usdCents: usdCents != null ? Math.max(0, Math.round(usdCents * factor)) : usdCents,
+        sats: appliesToSats ? Math.max(0, Math.round(sats * factor)) : sats,
+        usdCents:
+          usdCents != null && appliesToUsd ? Math.max(0, Math.round(usdCents * factor)) : usdCents,
       };
     }
     if (appliedDiscount.discountType === "flat_sats") {
@@ -264,8 +272,8 @@ export default function CheckoutModal({ onClose }) {
         ? Math.round((discountSats / 100_000_000) * btcUsdPrice * 100)
         : 0;
       return {
-        sats: Math.max(0, sats - discountSats),
-        usdCents: usdCents != null ? Math.max(0, usdCents - discountCents) : usdCents,
+        sats: appliesToSats ? Math.max(0, sats - discountSats) : sats,
+        usdCents: usdCents != null && appliesToUsd ? Math.max(0, usdCents - discountCents) : usdCents,
       };
     }
     // flat_usd
@@ -274,12 +282,18 @@ export default function CheckoutModal({ onClose }) {
       ? Math.round((appliedDiscount.discountValue / btcUsdPrice) * 100_000_000)
       : 0;
     return {
-      sats: Math.max(0, sats - discountSats),
-      usdCents: usdCents != null ? Math.max(0, usdCents - discountCents) : usdCents,
+      sats: appliesToSats ? Math.max(0, sats - discountSats) : sats,
+      usdCents: usdCents != null && appliesToUsd ? Math.max(0, usdCents - discountCents) : usdCents,
     };
   }
 
-  const { sats: finalTotalSats, usdCents: finalTotalUsdCents } = applyDiscount(totalSats, totalUsdCents);
+  const { sats: discountedItemsSats, usdCents: discountedItemsUsdCents } = applyDiscount(
+    itemsSats,
+    itemsUsdCents
+  );
+  const finalTotalSats = discountedItemsSats != null ? discountedItemsSats + shippingSats : null;
+  const finalTotalUsdCents =
+    discountedItemsUsdCents != null ? discountedItemsUsdCents + (shippingUsdCents || 0) : null;
 
   const ensureIdentityBase = useEnsureIdentity();
 

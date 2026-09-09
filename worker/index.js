@@ -1182,7 +1182,7 @@ async function handleGetInventory(request, env) {
 
 async function handleCreateDiscount(request, env) {
   const body = await request.json();
-  const { code, discountType, discountValue, allowedNpubs } = body;
+  const { code, discountType, discountValue, allowedNpubs, appliesTo } = body;
 
   if (!code || !discountType || discountValue == null) {
     return jsonResponse({ error: "Missing code, discountType, or discountValue." }, 422);
@@ -1190,16 +1190,18 @@ async function handleCreateDiscount(request, env) {
   if (discountType !== "percent" && discountType !== "flat_usd" && discountType !== "flat_sats") {
     return jsonResponse({ error: "discountType must be 'percent', 'flat_usd', or 'flat_sats'." }, 422);
   }
+  const normalizedAppliesTo = ["fiat", "lightning", "both"].includes(appliesTo) ? appliesTo : "both";
 
   const normalizedCode = code.trim().toUpperCase();
 
   await env.DB.prepare(
-    `INSERT INTO discount_codes (code, discount_type, discount_value, allowed_npubs, active, uses_count, created_at)
-     VALUES (?, ?, ?, ?, 1, 0, ?)
+    `INSERT INTO discount_codes (code, discount_type, discount_value, allowed_npubs, applies_to, active, uses_count, created_at)
+     VALUES (?, ?, ?, ?, ?, 1, 0, ?)
      ON CONFLICT(code) DO UPDATE SET
        discount_type = excluded.discount_type,
        discount_value = excluded.discount_value,
        allowed_npubs = excluded.allowed_npubs,
+       applies_to = excluded.applies_to,
        active = 1`
   )
     .bind(
@@ -1207,6 +1209,7 @@ async function handleCreateDiscount(request, env) {
       discountType,
       discountValue,
       allowedNpubs && allowedNpubs.length > 0 ? JSON.stringify(allowedNpubs) : null,
+      normalizedAppliesTo,
       Date.now()
     )
     .run();
@@ -1265,6 +1268,7 @@ async function handleValidateDiscount(request, env) {
     code: normalizedCode,
     discountType: row.discount_type,
     discountValue: row.discount_value,
+    appliesTo: row.applies_to || "both",
   });
 }
 

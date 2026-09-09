@@ -23,6 +23,7 @@ export default function AdminPage() {
   const [discountUses, setDiscountUses] = useState(null);
   const [newCode, setNewCode] = useState("");
   const [newType, setNewType] = useState("percent");
+  const [newAppliesTo, setNewAppliesTo] = useState("both");
   const [newValue, setNewValue] = useState("");
   const [newNpubs, setNewNpubs] = useState(""); // comma/newline separated, converted to hex on save
   const [savingDiscount, setSavingDiscount] = useState(false);
@@ -138,6 +139,7 @@ export default function AdminPage() {
           discountType: newType,
           discountValue: Number(newValue),
           allowedNpubs,
+          appliesTo: newAppliesTo,
         }),
       });
       if (!res.ok) throw new Error("Save failed");
@@ -395,6 +397,15 @@ export default function AdminPage() {
                         placeholder={newType === "percent" ? "10" : "5"}
                         className="w-20 border-2 border-ink/30 px-2 py-1.5 font-mono text-xs focus:border-ink focus:outline-none"
                       />
+                      <select
+                        value={newAppliesTo}
+                        onChange={(e) => setNewAppliesTo(e.target.value)}
+                        className="border-2 border-ink/30 px-2 py-1.5 font-serif text-xs focus:border-ink focus:outline-none"
+                      >
+                        <option value="both">both</option>
+                        <option value="fiat">card only</option>
+                        <option value="lightning">lightning only</option>
+                      </select>
                     </div>
                     <textarea
                       value={newNpubs}
@@ -441,6 +452,7 @@ export default function AdminPage() {
                                 ? `${d.discount_value} sats off`
                                 : `$${d.discount_value} off`}
                               {d.allowedNpubs?.length > 0 && ` · ${d.allowedNpubs.length} npub${d.allowedNpubs.length === 1 ? "" : "s"} only`}
+                              {d.applies_to && d.applies_to !== "both" && ` · ${d.applies_to === "fiat" ? "card only" : "lightning only"}`}
                               {" · used "}{d.uses_count}{" time"}{d.uses_count === 1 ? "" : "s"}
                             </span>
                           </p>
