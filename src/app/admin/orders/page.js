@@ -101,6 +101,10 @@ function parseOrder(rumor) {
     // include one at all (older/simpler clients may not).
     sourceApp: getTag(rumor, "client")?.[1] || null,
     createdAt: rumor.created_at,
+    // Kept for diagnostics — seeing exactly what an app actually sent,
+    // not just what our own field-name guesses happened to catch.
+    rawTags: rumor.tags,
+    rawContentJson: contentJson,
   };
 }
 
@@ -398,6 +402,16 @@ function OrderDetail({ order, messages, onSend, onMarkShipped }) {
               </a>
             )}
           </div>
+
+          <details className="mt-3 border border-ink/15 text-xs text-ink/60">
+            <summary className="cursor-pointer select-none px-3 py-2 font-display tracking-widest text-ink/40 marker:content-none [&::-webkit-details-marker]:hidden">
+              ▸ RAW ORDER DATA
+            </summary>
+            <div className="space-y-2 border-t border-ink/10 px-3 py-2 font-mono text-[11px]">
+              <p>tags: {JSON.stringify(order.rawTags)}</p>
+              <p>content (parsed as JSON): {JSON.stringify(order.rawContentJson)}</p>
+            </div>
+          </details>
         </div>
       </td>
     </tr>
