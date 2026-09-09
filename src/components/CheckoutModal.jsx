@@ -909,20 +909,44 @@ export default function CheckoutModal({ onClose }) {
               </div>
 
               {totalSats != null && (
-                <div className="border-y-2 border-ink py-3 text-center">
+                <div className="border-y-2 border-ink py-4">
                   {appliedDiscount && (
-                    <p className="font-serif text-sm text-ink/40 line-through">
-                      {formatDualPrice({ sats: totalSats, usdCents: totalUsdCents })}
+                    <p className="mb-3 text-center">
+                      <span className="inline-block border border-jade/40 bg-jade/10 px-3 py-1 font-display text-[10px] tracking-widest text-jade">
+                        ✓ {appliedDiscount.code} —{" "}
+                        {appliedDiscount.discountType === "percent"
+                          ? `${appliedDiscount.discountValue}% OFF`
+                          : appliedDiscount.discountType === "flat_sats"
+                          ? `${appliedDiscount.discountValue} SATS OFF`
+                          : `$${appliedDiscount.discountValue} OFF`}{" "}
+                        APPLIED
+                      </span>
                     </p>
                   )}
-                  <p className="font-display text-2xl text-ink">
-                    {formatDualPrice({ sats: finalTotalSats, usdCents: finalTotalUsdCents })}
-                  </p>
-                  {shippingSats ? (
-                    <p className="mt-1 font-serif text-xs text-ink/50">
-                      includes {formatDualPrice({ sats: shippingSats, usdCents: shippingUsdCents })} shipping
-                    </p>
-                  ) : null}
+
+                  <div className="space-y-1.5 px-1 font-serif text-sm text-ink/80">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span>Product</span>
+                      <span className="text-right">
+                        {formatDualPrice({ sats: discountedItemsSats, usdCents: discountedItemsUsdCents })}
+                      </span>
+                    </div>
+                    {shippingSats ? (
+                      <div className="flex items-baseline justify-between gap-3 text-ink/60">
+                        <span>Shipping</span>
+                        <span className="text-right">
+                          {formatDualPrice({ sats: shippingSats, usdCents: shippingUsdCents })}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-3 flex items-baseline justify-between border-t border-ink/15 px-1 pt-3">
+                    <span className="font-display text-xs tracking-widest text-ink/60">TOTAL</span>
+                    <span className="font-display text-lg text-ink">
+                      {formatDualPrice({ sats: finalTotalSats, usdCents: finalTotalUsdCents })}
+                    </span>
+                  </div>
                 </div>
               )}
 
