@@ -6,8 +6,38 @@ import { nip19 } from "nostr-tools";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import { useAuth } from "@/context/AuthContext";
+import { useProfile } from "@/hooks/useProfile";
 import { DEFAULT_RELAYS } from "@/lib/relays";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
+
+function shortPubkey(pk) {
+  return `${pk.slice(0, 12)}…`;
+}
+
+/** Resolves a pubkey to its actual name and avatar where one exists —
+ * falls back to the shortened pubkey itself when there's no profile
+ * to find, rather than showing a broken image or blank name. */
+function ProfileLabel({ pubkey }) {
+  const { profile } = useProfile(pubkey);
+  const displayName = profile?.display_name || profile?.name;
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {profile?.picture ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={profile.picture}
+          alt=""
+          className="h-4 w-4 shrink-0 rounded-full border border-ink/20 object-cover"
+          onError={(e) => {
+            e.target.style.display = "none";
+          }}
+        />
+      ) : null}
+      <span>{displayName || shortPubkey(pubkey)}</span>
+    </span>
+  );
+}
 
 export default function AdminPage() {
   const { isLoggedIn, pubkey, signEvent, restoring } = useAuth();
@@ -21,6 +51,11 @@ export default function AdminPage() {
 
   const [discounts, setDiscounts] = useState(null);
   const [discountUses, setDiscountUses] = useState(null);
+  const [members, setMembers] = useState(null);
+  const [newMemberNpub, setNewMemberNpub] = useState("");
+  const [newMemberDiscount, setNewMemberDiscount] = useState("10");
+  const [addingMember, setAddingMember] = useState(false);
+  const [memberError, setMemberError] = useState("");
   const [newCode, setNewCode] = useState("");
   const [newType, setNewType] = useState("percent");
   const [newAppliesTo, setNewAppliesTo] = useState("both");
@@ -74,6 +109,7 @@ export default function AdminPage() {
     if (!isRightAccount) return;
     fetchDiscounts();
     fetchDiscountUses();
+    fetchMembers();
   }, [isRightAccount]);
 
   async function fetchDiscounts() {
@@ -94,6 +130,54 @@ export default function AdminPage() {
     } catch {
       setDiscountUses([]);
     }
+  }
+
+  async function fetchMembers() {
+    try {
+      const res = await fetch("/api/coffee-club");
+      const data = await res.json();
+      setMembers(data.members || []);
+    } catch {
+      setMembers([]);
+    }
+  }
+
+  async function handleAddMember() {
+    setMemberError("");
+    if (!newMemberNpub.trim()) {
+      setMemberError("Enter an npub or hex pubkey.");
+      return;
+    }
+    const discountPercent = Number(newMemberDiscount);
+    if (!discountPercent || discountPercent <= 0) {
+      setMemberError("Enter a discount percentage greater than 0.");
+      return;
+    }
+    setAddingMember(true);
+    try {
+      const trimmed = newMemberNpub.trim();
+      const pubkeyToAdd = trimmed.startsWith("npub1") ? nip19.decode(trimmed).data : trimmed;
+      await fetch("/api/coffee-club", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pubkey: pubkeyToAdd, discountPercent }),
+      });
+      setNewMemberNpub("");
+      await fetchMembers();
+    } catch {
+      setMemberError("Couldn't add that member — check the npub/pubkey and try again.");
+    } finally {
+      setAddingMember(false);
+    }
+  }
+
+  async function handleRemoveMember(memberPubkey) {
+    await fetch("/api/coffee-club/remove", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pubkey: memberPubkey }),
+    });
+    fetchMembers();
   }
 
   /** Converts a mix of npub/hex strings (however the person happens to
@@ -492,6 +576,67 @@ export default function AdminPage() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-ink/10 pt-4">
+                  <p className="font-display text-sm text-ink">Coffee Club</p>
+                  <p className="mt-1 font-serif text-xs text-ink/60">
+                    Members get their discount applied automatically at
+                    checkout once logged in — no code needed.
+                  </p>
+
+                  <div className="mt-3 space-y-2 border border-ink/15 p-3">
+                    <div className="flex gap-2">
+                      <input
+                        value={newMemberNpub}
+                        onChange={(e) => setNewMemberNpub(e.target.value)}
+                        placeholder="npub or hex"
+                        className="flex-1 border-2 border-ink/30 px-3 py-2 font-mono text-xs focus:border-ink focus:outline-none"
+                      />
+                      <input
+                        value={newMemberDiscount}
+                        onChange={(e) => setNewMemberDiscount(e.target.value)}
+                        type="number"
+                        placeholder="10"
+                        className="w-20 border-2 border-ink/30 px-2 py-2 font-mono text-xs focus:border-ink focus:outline-none"
+                      />
+                      <span className="flex items-center font-display text-xs text-ink/50">%</span>
+                    </div>
+                    {memberError && <p className="font-serif text-xs text-rust">{memberError}</p>}
+                    <button
+                      onClick={handleAddMember}
+                      disabled={addingMember}
+                      className="w-full border-2 border-ink bg-ink px-4 py-2 font-display text-xs tracking-widest text-paper hover:bg-jade hover:border-jade disabled:opacity-50"
+                    >
+                      {addingMember ? "ADDING…" : "+ ADD MEMBER"}
+                    </button>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    {members === null && (
+                      <p className="font-serif text-xs italic text-ink/40">Loading…</p>
+                    )}
+                    {members?.length === 0 && (
+                      <p className="font-serif text-xs italic text-ink/40">No members yet.</p>
+                    )}
+                    {members?.map((m) => (
+                      <div
+                        key={m.pubkey}
+                        className="flex items-center justify-between border border-ink/15 px-3 py-2"
+                      >
+                        <p className="font-mono text-xs text-ink">
+                          <ProfileLabel pubkey={m.pubkey} />{" "}
+                          <span className="text-ink/50">— {m.discountPercent}% off</span>
+                        </p>
+                        <button
+                          onClick={() => handleRemoveMember(m.pubkey)}
+                          className="font-display text-xs tracking-widest text-rust hover:text-ink"
+                        >
+                          REMOVE
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
