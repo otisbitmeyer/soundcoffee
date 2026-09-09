@@ -92,8 +92,8 @@ function parseOrder(rumor) {
         contentJson?.shipping?.address ||
         null
     ),
-    email: getTag(rumor, "email")?.[1] || contentJson?.email || contentJson?.buyerEmail || null,
-    phone: getTag(rumor, "phone")?.[1] || contentJson?.phone || null,
+    email: getTag(rumor, "email")?.[1] || contentJson?.email || contentJson?.buyerEmail || contentJson?.guestContact?.email || null,
+    phone: getTag(rumor, "phone")?.[1] || contentJson?.phone || contentJson?.guestContact?.phone || null,
     notes: contentJson ? contentJson.notes || contentJson.message || "" : rumor.content || "",
     // Which app actually sent this — the "client" tag (NIP-89 style) is
     // what Conduit uses to identify itself; index 1 is the human-readable
