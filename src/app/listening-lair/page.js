@@ -10,24 +10,18 @@ import { usePodcastFeed } from "@/hooks/usePodcastFeed";
 import { MAIN_FEED } from "@/lib/podcastFeeds";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
-/** One row per podcast — collapsed to just its name (matching the same
- * chalkboard, click-to-expand treatment as individual episode titles),
+/** One row per curated community podcast — collapsed to just its name,
  * expanding to that show's episode list. Fetches its own feed lazily —
  * only once actually expanded — rather than every curated show's full
- * feed loading upfront regardless of whether anyone opens it. Name is
- * uppercase and sized larger than individual episode titles, so the
- * two levels read as clearly distinct. */
-function PodcastRow({ name, feedUrl, image, recipientPubkey, isOurShow }) {
+ * feed loading upfront regardless of whether anyone opens it. Sound
+ * Coffee's own show doesn't use this — its episodes show directly,
+ * always expanded, no name wrapper at all. */
+function PodcastRow({ name, feedUrl, image, recipientPubkey }) {
   const [expanded, setExpanded] = useState(false);
   const { episodes, feedInfo } = usePodcastFeed(expanded ? feedUrl : null);
 
   return (
     <div>
-      {isOurShow && (
-        <p className="pt-6 text-center font-display text-[10px] tracking-widest text-jade">
-          OUR SHOW
-        </p>
-      )}
       <button
         onClick={() => setExpanded((e) => !e)}
         className="w-full px-6 py-6 text-center transition"
@@ -36,18 +30,6 @@ function PodcastRow({ name, feedUrl, image, recipientPubkey, isOurShow }) {
           {name}
         </h2>
       </button>
-
-      {isOurShow && (
-        <div className="flex justify-center pb-2">
-          <ZapButton
-            recipientPubkey={SOUND_COFFEE_PUBKEY}
-            label="Boost the podcast"
-            className="border-2 border-paper px-4 py-2 font-display text-xs tracking-widest text-paper transition hover:bg-jade hover:border-jade"
-          >
-            ⚡ BOOST THE PODCAST
-          </ZapButton>
-        </div>
-      )}
 
       <div
         className={`overflow-hidden transition-all duration-500 ease-in-out ${
@@ -74,6 +56,7 @@ function PodcastRow({ name, feedUrl, image, recipientPubkey, isOurShow }) {
 
 export default function ListeningLair() {
   const [curatedPodcasts, setCuratedPodcasts] = useState([]);
+  const { episodes: ourEpisodes, feedInfo: ourFeedInfo } = usePodcastFeed(MAIN_FEED.url);
 
   useEffect(() => {
     fetch("/api/radio-podcasts")
@@ -98,10 +81,29 @@ export default function ListeningLair() {
             height={156}
             className="mx-auto mt-3 h-auto w-full max-w-xl rotate-2"
           />
+          <div className="mt-6">
+            <ZapButton
+              recipientPubkey={SOUND_COFFEE_PUBKEY}
+              label="Boost Sound Coffee"
+              className="border-2 border-paper px-5 py-2.5 font-display text-sm tracking-widest text-paper transition hover:bg-jade hover:border-jade"
+            >
+              ⚡ BOOST SOUND COFFEE
+            </ZapButton>
+          </div>
         </div>
 
         <div className="mx-auto max-w-4xl px-6 py-16">
-          <PodcastRow name="Sound Coffee" feedUrl={MAIN_FEED.url} recipientPubkey={SOUND_COFFEE_PUBKEY} isOurShow />
+          {ourEpisodes ? (
+            <EpisodeList
+              episodes={ourEpisodes}
+              showImage={ourFeedInfo?.image}
+              feedTitle="Sound Coffee"
+              recipientPubkey={SOUND_COFFEE_PUBKEY}
+              paginate
+            />
+          ) : (
+            <p className="text-center font-serif text-sm text-paper/50">Loading episodes…</p>
+          )}
 
           {curatedPodcasts.length > 0 && (
             <p className="mt-10 mb-2 border-t border-paper/10 pt-8 text-center font-display text-xs tracking-widest text-rust">

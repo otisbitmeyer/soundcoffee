@@ -690,24 +690,38 @@ export default function OrdersPage() {
   }, [isRightAccount, nip44Decrypt, nip04Decrypt]);
 
   async function handleSendMessage(order, text) {
-    const eventTemplate = {
-      kind: 14,
-      tags: [["p", order.buyerPubkey], ["subject", order.orderId]],
-      content: text,
-    };
-    const [toBuyer, toSelf] = await giftWrapForBoth({
-      eventTemplate,
-      senderPubkey: pubkey,
-      recipientPubkey: order.buyerPubkey,
-      authNip44Encrypt: nip44Encrypt,
-      authSignEvent: signEvent,
-    });
+    // Same rule as shipping notifications — a guest's pubkey is a
+    // throwaway key generated just for checkout, not something
+    // they're actually watching, so a Nostr DM there would never be
+    // seen. Email is a separate, independent channel below.
+    if (!order.isGuest && order.buyerPubkey) {
+      const eventTemplate = {
+        kind: 14,
+        tags: [["p", order.buyerPubkey], ["subject", order.orderId]],
+        content: text,
+      };
+      const [toBuyer, toSelf] = await giftWrapForBoth({
+        eventTemplate,
+        senderPubkey: pubkey,
+        recipientPubkey: order.buyerPubkey,
+        authNip44Encrypt: nip44Encrypt,
+        authSignEvent: signEvent,
+      });
 
-    const buyerDmRelays = await getDmRelaysFor(order.buyerPubkey);
-    const publishTargets = [...new Set([...buyerDmRelays, ...DEFAULT_RELAYS])];
+      const buyerDmRelays = await getDmRelaysFor(order.buyerPubkey);
+      const publishTargets = [...new Set([...buyerDmRelays, ...DEFAULT_RELAYS])];
 
-    await Promise.any(getPublishPool().publish(publishTargets, toBuyer));
-    await Promise.any(getPublishPool().publish(DEFAULT_RELAYS, toSelf));
+      await Promise.any(getPublishPool().publish(publishTargets, toBuyer));
+      await Promise.any(getPublishPool().publish(DEFAULT_RELAYS, toSelf));
+    }
+
+    if (order.email) {
+      fetch("/api/notify-message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.orderId, buyerEmail: order.email, message: text }),
+      }).catch(() => {});
+    }
 
     setMessagesByOrder((prev) => ({
       ...prev,

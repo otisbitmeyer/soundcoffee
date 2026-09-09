@@ -533,6 +533,36 @@ async function handleNotifyOrder(request, env) {
   return jsonResponse({ ok: true, results });
 }
 
+/**
+ * Sends a message as an email too, alongside whatever Nostr DM (if
+ * any) already went out — for when a buyer left an email but the
+ * seller wants to actually reach them reliably, not just hope they
+ * check a Nostr client.
+ */
+async function handleNotifyMessage(request, env) {
+  const { orderId, buyerEmail, message } = await request.json();
+  if (!orderId || !message) return jsonResponse({ error: "Missing orderId or message." }, 422);
+  if (!buyerEmail) return jsonResponse({ ok: true, skipped: "no email on file" });
+
+  try {
+    await sendEmail(env, {
+      to: buyerEmail,
+      subject: `Message about your Sound Coffee order (${orderId})`,
+      text: message,
+      html: renderOrderEmailHtml({
+        heading: "A message about your order",
+        rows: [
+          { label: "ORDER ID", value: orderId },
+          { label: "MESSAGE", value: message.replace(/\n/g, "<br>") },
+        ],
+      }),
+    });
+    return jsonResponse({ ok: true, sent: true });
+  } catch (e) {
+    return jsonResponse({ error: e.message }, 502);
+  }
+}
+
 async function handleNotifyShipped(request, env) {
   const { orderId, buyerEmail, itemTitle, trackingNumber, carrier } = await request.json();
   if (!orderId) return jsonResponse({ error: "Missing orderId." }, 422);
@@ -1767,6 +1797,9 @@ async function handleFetch(request, env) {
   }
   if (request.method === "POST" && url.pathname === "/api/notify-order-detected") {
     return handleNotifyOrderDetected(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/notify-message") {
+    return handleNotifyMessage(request, env);
   }
   if (request.method === "POST" && url.pathname === "/api/notify-shipped") {
     return handleNotifyShipped(request, env);

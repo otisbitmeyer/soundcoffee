@@ -136,7 +136,7 @@ function EpisodeCard({ episode, showImage, feedTitle, recipientPubkey }) {
         onClick={() => setExpanded((e) => !e)}
         className="w-full px-6 py-5 text-center transition"
       >
-        <h3 className="font-display text-xl tracking-wide text-paper transition hover:text-jade sm:text-2xl">
+        <h3 className="font-serif text-xl tracking-wide text-paper transition hover:text-jade sm:text-2xl">
           {episode.title}
         </h3>
       </button>
