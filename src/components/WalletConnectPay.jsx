@@ -37,10 +37,21 @@ export default function WalletConnectPay({ invoice, onPaid }) {
   async function handleWeblnPay() {
     setWeblnStatus("working");
     setWeblnError("");
+    // If the extension's own permission prompt goes unanswered (easy to
+    // miss — it can appear as a small popup near the extension icon,
+    // not on the page itself), this would otherwise hang indefinitely
+    // with no indication the QR code below still works fine.
+    const timeout = setTimeout(() => {
+      setWeblnError(
+        "Still waiting on your wallet — check for a permission popup from your extension, or just scan/copy the QR code below instead."
+      );
+    }, 12000);
     try {
       await payInvoiceViaWebln(invoice);
+      clearTimeout(timeout);
       onPaid();
     } catch (e) {
+      clearTimeout(timeout);
       setWeblnError(e.message || "Payment failed or was cancelled.");
       setWeblnStatus("error");
     }
