@@ -78,7 +78,7 @@ export default function VariantPicker({ parentListing, variations, onSelect, onC
               <label className="block font-display text-xs uppercase tracking-widest text-ink/60">
                 {attr.key}
               </label>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-2 flex flex-wrap justify-center gap-2">
                 {attr.values.map((value) => {
                   const isSelected = selected[attr.key] === value;
                   // Disable options that don't exist in combination with
