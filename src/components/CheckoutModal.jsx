@@ -466,26 +466,11 @@ export default function CheckoutModal({ onClose }) {
         }),
       }).catch(() => {});
 
-      // Email notification — a reliable fallback alongside the DM, since
-      // not every Nostr client supports NIP-17 gift-wrapped messages yet.
-      // Especially important for guest checkout — it's their main durable
-      // record if they don't hang onto the guest key.
-      fetch("/api/notify-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId: newOrderId,
-          itemTitle: cartSummary,
-          quantity: cartItems.reduce((sum, i) => sum + i.quantity, 0),
-          amountSats: finalTotalSats,
-          amountUsdCents: finalTotalUsdCents,
-          paymentMethod,
-          buyerNpub: identity.isGuest ? null : npub,
-          buyerEmail: email.trim() || null,
-          address: combinedAddress || null,
-          notes: notes.trim() || null,
-        }),
-      }).catch(() => {});
+      // Note: the "order paid" email notification (admin + buyer) is now
+      // sent centrally from markOrderPaid on the backend, only once
+      // payment is genuinely confirmed — not here at order placement.
+      // An order that's abandoned before paying should never trigger a
+      // "sale occurred" email at all.
 
       // A 100%-off discount can make finalTotalSats genuinely 0 — there's
       // nothing to actually pay, so neither Lightning (no such thing as a

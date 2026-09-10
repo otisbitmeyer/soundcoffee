@@ -449,90 +449,6 @@ async function handleNotifyOrderDetected(request, env) {
   }
 }
 
-async function handleNotifyOrder(request, env) {
-  const body = await request.json();
-  const {
-    orderId,
-    itemTitle,
-    quantity,
-    amountSats,
-    amountUsdCents,
-    paymentMethod,
-    buyerNpub,
-    buyerEmail,
-    address,
-    notes,
-  } = body;
-
-  if (!orderId || !itemTitle) {
-    return jsonResponse({ error: "Missing required fields." }, 422);
-  }
-
-  // Show the amount in whatever currency was actually paid — sats for
-  // Lightning, dollars for card — not always sats regardless of method.
-  const amountLine =
-    paymentMethod === "card" && amountUsdCents
-      ? `$${(amountUsdCents / 100).toFixed(2)}`
-      : `${amountSats || 0} sats`;
-
-  const summary = [
-    `New order: ${itemTitle} x${quantity || 1}`,
-    `Order ID: ${orderId}`,
-    `Amount: ${amountLine}`,
-    buyerNpub ? `Buyer npub: ${buyerNpub}` : null,
-    address ? `Shipping address:\n${address}` : null,
-    notes ? `Notes: ${notes}` : null,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-
-  const emailRows = [
-    { label: "ITEM", value: `${itemTitle} &times;${quantity || 1}` },
-    { label: "ORDER ID", value: orderId },
-    { label: "AMOUNT", value: amountLine },
-    { label: "BUYER NPUB", value: buyerNpub },
-    { label: "SHIPPING ADDRESS", value: address ? address.replace(/\n/g, "<br>") : null },
-    { label: "NOTES", value: notes },
-  ];
-
-  const results = {};
-
-  if (env.ADMIN_EMAIL) {
-    try {
-      results.admin = await sendEmail(env, {
-        to: env.ADMIN_EMAIL,
-        subject: `☕ New order: ${itemTitle}`,
-        text: summary,
-        html: renderOrderEmailHtml({
-          heading: "New order received",
-          rows: emailRows,
-        }),
-      });
-    } catch (e) {
-      results.admin = { error: e.message };
-    }
-  }
-
-  if (buyerEmail) {
-    try {
-      results.buyer = await sendEmail(env, {
-        to: buyerEmail,
-        subject: `Your Sound Coffee order (${orderId})`,
-        text: `Thanks for your order!\n\n${summary}\n\nWe'll be in touch about shipping.`,
-        html: renderOrderEmailHtml({
-          heading: "Thanks for your order!",
-          intro: "We'll be in touch about shipping.",
-          rows: emailRows,
-        }),
-      });
-    } catch (e) {
-      results.buyer = { error: e.message };
-    }
-  }
-
-  return jsonResponse({ ok: true, results });
-}
-
 /**
  * Sends a message as an email too, alongside whatever Nostr DM (if
  * any) already went out — for when a buyer left an email but the
@@ -983,6 +899,81 @@ async function handleListOrders(request, env) {
   }
 }
 
+/**
+ * Sends the "new order" notification emails (admin + buyer) from a D1
+ * order row directly — called only once an order genuinely transitions
+ * to paid, not at order placement. Reuses the same HTML template as
+ * the original notify-order flow.
+ */
+async function sendOrderConfirmedEmails(env, orderRow) {
+  let items = [];
+  try {
+    items = JSON.parse(orderRow.items_json);
+  } catch {
+    // malformed row — proceed with an empty item list rather than fail entirely
+  }
+  const itemTitle = items.map((i) => i.title).join(", ") || "Order";
+  const quantity = items.reduce((sum, i) => sum + (i.quantity || 1), 0);
+
+  const amountLine =
+    orderRow.payment_method === "card" && orderRow.amount_usd_cents
+      ? `$${(orderRow.amount_usd_cents / 100).toFixed(2)}`
+      : `${orderRow.amount_sats || 0} sats`;
+
+  const address = [orderRow.address_line1, orderRow.address_line2, [orderRow.city, orderRow.state, orderRow.zip].filter(Boolean).join(", "), orderRow.country]
+    .filter(Boolean)
+    .join("\n");
+
+  const summary = [
+    `New order: ${itemTitle} x${quantity}`,
+    `Order ID: ${orderRow.id}`,
+    `Amount: ${amountLine}`,
+    !orderRow.is_guest && orderRow.customer_pubkey ? `Buyer pubkey: ${orderRow.customer_pubkey}` : null,
+    address ? `Shipping address:\n${address}` : null,
+    orderRow.notes ? `Notes: ${orderRow.notes}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const emailRows = [
+    { label: "ITEM", value: `${itemTitle} &times;${quantity}` },
+    { label: "ORDER ID", value: orderRow.id },
+    { label: "AMOUNT", value: amountLine },
+    { label: "SHIPPING ADDRESS", value: address ? address.replace(/\n/g, "<br>") : null },
+    { label: "NOTES", value: orderRow.notes },
+  ];
+
+  if (env.ADMIN_EMAIL) {
+    try {
+      await sendEmail(env, {
+        to: env.ADMIN_EMAIL,
+        subject: `☕ Order paid: ${itemTitle}`,
+        text: summary,
+        html: renderOrderEmailHtml({ heading: "Order paid", rows: emailRows }),
+      });
+    } catch {
+      // best-effort — a failed admin email shouldn't block payment confirmation
+    }
+  }
+
+  if (orderRow.customer_email) {
+    try {
+      await sendEmail(env, {
+        to: orderRow.customer_email,
+        subject: `Your Sound Coffee order (${orderRow.id})`,
+        text: `Thanks for your order!\n\n${summary}\n\nWe'll be in touch about shipping.`,
+        html: renderOrderEmailHtml({
+          heading: "Thanks for your order!",
+          intro: "We'll be in touch about shipping.",
+          rows: emailRows,
+        }),
+      });
+    } catch {
+      // best-effort — same reasoning
+    }
+  }
+}
+
 /** Marks an order paid — idempotent, safe to call more than once for the same order. */
 async function markOrderPaid(env, orderId) {
   const result = await env.DB.prepare(
@@ -991,11 +982,15 @@ async function markOrderPaid(env, orderId) {
     .bind(Date.now(), orderId)
     .run();
 
-  // Only commit reservations the first time an order actually transitions
-  // to paid — result.meta.changes is 0 if it was already paid, which
-  // keeps this safe to call more than once for the same order.
+  // Only commit reservations (and send the "order paid" notification)
+  // the first time an order actually transitions to paid —
+  // result.meta.changes is 0 if it was already paid, which keeps this
+  // safe to call more than once for the same order, and guarantees the
+  // email only ever fires on genuine, confirmed payment, not placement.
   if (result.meta?.changes > 0) {
     await commitReservationsForOrder(env, orderId);
+    const orderRow = await env.DB.prepare(`SELECT * FROM orders WHERE id = ?`).bind(orderId).first();
+    if (orderRow) await sendOrderConfirmedEmails(env, orderRow);
   }
 }
 
@@ -1957,9 +1952,6 @@ async function handleFetch(request, env) {
   }
   if (request.method === "POST" && url.pathname === "/api/branta/verify") {
     return handleBrantaVerify(request, env);
-  }
-  if (request.method === "POST" && url.pathname === "/api/notify-order") {
-    return handleNotifyOrder(request, env);
   }
   if (request.method === "POST" && url.pathname === "/api/notify-order-detected") {
     return handleNotifyOrderDetected(request, env);
