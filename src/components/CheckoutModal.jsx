@@ -507,7 +507,7 @@ export default function CheckoutModal({ onClose }) {
       if (paymentMethod === "card") {
         // Register the pending payment first (no verifyUrl — Stripe's
         // webhook confirms this one directly, not the LUD-21 poller),
-        // then send the buyer to Stripe's hosted checkout. Same
+        // then send the buyer to Square's hosted checkout. Same
         // membership-tracking pipeline as Lightning from here on.
         await fetch("/api/pending-payment", {
           method: "POST",
@@ -517,7 +517,7 @@ export default function CheckoutModal({ onClose }) {
             type: "purchase",
             pubkey: identity.pubkey,
             sellerPubkey,
-            invoice: `stripe:${newOrderId}`,
+            invoice: `square:${newOrderId}`,
             verifyUrl: null,
             amountSats: finalTotalSats,
             isGuest: identity.isGuest,
@@ -525,7 +525,7 @@ export default function CheckoutModal({ onClose }) {
         });
 
         const origin = window.location.origin + window.location.pathname;
-        const res = await fetch("/api/create-checkout-session", {
+        const res = await fetch("/api/create-square-checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -541,7 +541,7 @@ export default function CheckoutModal({ onClose }) {
         if (!session.url) throw new Error(session.error || "Couldn't start card checkout.");
 
         clearCart(); // paying now, leaving the page — cart's job is done
-        window.location.href = session.url; // leaves the page — Stripe takes over from here
+        window.location.href = session.url; // leaves the page — Square takes over from here
         return;
       }
 

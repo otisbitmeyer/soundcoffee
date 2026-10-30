@@ -811,6 +811,152 @@ async function handleStripeWebhook(request, env) {
 }
 
 // ---------------------------------------------------------------------
+// Square (fiat checkout) — replaces Stripe. Same shape: create a hosted
+// payment link, send the buyer there, and let a signed webhook confirm
+// payment through the shared markOrderPaid() path. Needs these Worker
+// secrets/vars: SQUARE_ACCESS_TOKEN, SQUARE_LOCATION_ID,
+// SQUARE_WEBHOOK_SIGNATURE_KEY, SQUARE_WEBHOOK_URL (exact URL registered
+// in Square's dashboard), and optionally SQUARE_ENVIRONMENT=sandbox
+// (anything else = production).
+// ---------------------------------------------------------------------
+
+function squareBaseUrl(env) {
+  return env.SQUARE_ENVIRONMENT === "sandbox"
+    ? "https://connect.squareupsandbox.com"
+    : "https://connect.squareup.com";
+}
+
+function squareHeaders(env) {
+  return {
+    Authorization: `Bearer ${env.SQUARE_ACCESS_TOKEN}`,
+    "Content-Type": "application/json",
+    "Square-Version": "2025-10-16",
+  };
+}
+
+async function handleCreateSquareCheckout(request, env) {
+  if (!env.SQUARE_ACCESS_TOKEN || !env.SQUARE_LOCATION_ID) {
+    return jsonResponse({ error: "Card payments aren't configured yet." }, 501);
+  }
+
+  const { orderId, itemTitle, amountUsdCents, buyerEmail, successUrl } = await request.json();
+  if (!orderId || !itemTitle || amountUsdCents == null) {
+    return jsonResponse({ error: "Missing required fields." }, 422);
+  }
+  const amount = Math.round(amountUsdCents);
+  if (amount <= 0) {
+    return jsonResponse({ error: "Nothing to charge." }, 422);
+  }
+
+  const body = {
+    idempotency_key: `sc-${orderId}`,
+    order: {
+      location_id: env.SQUARE_LOCATION_ID,
+      reference_id: orderId,
+      line_items: [
+        {
+          name: String(itemTitle).slice(0, 500),
+          quantity: "1",
+          base_price_money: { amount, currency: "USD" },
+        },
+      ],
+    },
+    checkout_options: { redirect_url: successUrl },
+  };
+  if (buyerEmail) body.pre_populated_data = { buyer_email: buyerEmail };
+
+  const res = await fetch(`${squareBaseUrl(env)}/v2/online-checkout/payment-links`, {
+    method: "POST",
+    headers: squareHeaders(env),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    return jsonResponse({ error: `Square error: ${errText}` }, 502);
+  }
+
+  const data = await res.json();
+  const link = data.payment_link;
+  // Square's payment webhooks carry Square's own order id, so remember
+  // which of our orders it belongs to (reference_id is the fallback).
+  if (link?.order_id) {
+    await env.SOUND_COFFEE_KV.put(`square-order:${link.order_id}`, orderId, {
+      expirationTtl: 60 * 60 * 24 * 30,
+    });
+  }
+  return jsonResponse({ url: link?.url, squareOrderId: link?.order_id });
+}
+
+/** Square signs HMAC-SHA256(notificationUrl + rawBody) with the signature key, base64. */
+async function verifySquareSignature(payload, signatureHeader, env) {
+  if (!signatureHeader || !env.SQUARE_WEBHOOK_URL) return false;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(env.SQUARE_WEBHOOK_SIGNATURE_KEY),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(env.SQUARE_WEBHOOK_URL + payload)
+  );
+  const computed = btoa(String.fromCharCode(...new Uint8Array(sig)));
+  if (computed.length !== signatureHeader.length) return false;
+  let diff = 0;
+  for (let i = 0; i < computed.length; i++) {
+    diff |= computed.charCodeAt(i) ^ signatureHeader.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+async function handleSquareWebhook(request, env) {
+  if (!env.SQUARE_WEBHOOK_SIGNATURE_KEY || !env.SQUARE_WEBHOOK_URL) {
+    return jsonResponse({ error: "Webhook not configured." }, 501);
+  }
+
+  const payload = await request.text();
+  const valid = await verifySquareSignature(
+    payload,
+    request.headers.get("x-square-hmacsha256-signature"),
+    env
+  );
+  if (!valid) return jsonResponse({ error: "Invalid signature." }, 400);
+
+  const event = JSON.parse(payload);
+
+  if (event.type === "payment.updated" || event.type === "payment.created") {
+    const payment = event.data?.object?.payment;
+    // Only a COMPLETED payment counts as paid. Anything else (APPROVED,
+    // PENDING, FAILED, CANCELED) must never trigger a sale.
+    if (payment?.status === "COMPLETED" && payment.order_id) {
+      let orderId = await env.SOUND_COFFEE_KV.get(`square-order:${payment.order_id}`);
+      if (!orderId) {
+        // Fallback: ask Square for the order and read our reference_id.
+        const res = await fetch(`${squareBaseUrl(env)}/v2/orders/${payment.order_id}`, {
+          headers: squareHeaders(env),
+        });
+        if (res.ok) orderId = (await res.json()).order?.reference_id;
+      }
+      if (orderId) {
+        await markOrderPaid(env, orderId); // idempotent
+
+        const raw = await env.SOUND_COFFEE_KV.get(`pending:${orderId}`);
+        if (raw) {
+          const pending = JSON.parse(raw);
+          if (pending.status === "pending") {
+            await confirmPayment(env, pending);
+          }
+        }
+      }
+    }
+  }
+
+  return jsonResponse({ received: true });
+}
+
+// ---------------------------------------------------------------------
 // D1 orders — the authoritative order/inventory system. Replaces relying
 // on Nostr-relay scanning alone for "what did we sell" — that approach
 // had no way to guarantee a given order is only ever counted once.
@@ -1964,6 +2110,12 @@ async function handleFetch(request, env) {
   }
   if (request.method === "POST" && url.pathname === "/api/create-checkout-session") {
     return handleCreateCheckoutSession(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/create-square-checkout") {
+    return handleCreateSquareCheckout(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/square-webhook") {
+    return handleSquareWebhook(request, env);
   }
   if (request.method === "POST" && url.pathname === "/api/stripe-webhook") {
     return handleStripeWebhook(request, env);
