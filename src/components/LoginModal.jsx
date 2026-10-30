@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 
 export default function LoginModal({ onClose }) {
@@ -41,8 +41,24 @@ export default function LoginModal({ onClose }) {
     }
   }
 
+  // Outside-click and Escape close the window, except while a freshly
+  // created key is on screen — closing then would lose the only copy.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape" && !createdKeys) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, createdKeys]);
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/80 px-4">
+    <div
+      className="fixed inset-0 z-[100] overflow-y-auto bg-ink/80"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !createdKeys) onClose();
+      }}
+    >
+      <div className="flex min-h-full items-center justify-center px-4 py-6">
       <div className="w-full max-w-md border-2 border-ink bg-paper">
         <div className="flex items-center justify-between border-b-2 border-ink px-6 py-4">
           <h2 className="font-display text-xl tracking-wide text-ink">
@@ -202,6 +218,7 @@ export default function LoginModal({ onClose }) {
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );
