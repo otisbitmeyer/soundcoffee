@@ -10,8 +10,7 @@
     "run_worker_first": ["/api/*"]
   },
   "vars": {
-    "SQUARE_WEBHOOK_URL": "https://soundcoffee.org/api/square-webhook",
-    "SQUARE_ENVIRONMENT": "sandbox"
+    "SQUARE_WEBHOOK_URL": "https://soundcoffee.org/api/square-webhook"
   },
   "triggers": {
     "crons": ["*/5 * * * *"]
