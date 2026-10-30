@@ -57,6 +57,14 @@ export default function ZapModal({
     return () => clearInterval(pollRef.current);
   }, []);
 
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose?.();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   // Close automatically once payment is confirmed — after a few seconds
   // to actually read it, or immediately if they navigate elsewhere
   // (including same-page hash links, which don't unmount this component
@@ -231,7 +239,13 @@ export default function ZapModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/80 px-4">
+    <div
+      className="fixed inset-0 z-[100] overflow-y-auto bg-ink/80"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+    >
+      <div className="flex min-h-full items-center justify-center px-4 py-6">
       <div className="w-full max-w-md border-2 border-ink bg-paper">
         <div className="flex items-center justify-between border-b-2 border-ink px-6 py-4">
           <h2 className="font-display text-xl tracking-wide text-ink">
@@ -411,6 +425,7 @@ export default function ZapModal({
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );
