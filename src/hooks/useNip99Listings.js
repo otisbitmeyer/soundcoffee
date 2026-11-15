@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { SimplePool } from "nostr-tools/pool";
-import { DEFAULT_RELAYS } from "@/lib/relays";
+import { DEFAULT_RELAYS, LISTING_RELAYS } from "@/lib/relays";
 
 let pool;
 function getPool() {
@@ -108,7 +108,7 @@ export function useNip99Listings(pubkey) {
         // NIP-65: the seller's own relay list (kind 10002) says where
         // they actually publish. Apps like Conduit may post listings to
         // those relays and not to our default four, so query both.
-        let relays = DEFAULT_RELAYS;
+        let relays = LISTING_RELAYS;
         try {
           const relayLists = await p.querySync(
             DEFAULT_RELAYS,
@@ -119,7 +119,7 @@ export function useNip99Listings(pubkey) {
           const own = (newest?.tags || [])
             .filter((t) => t[0] === "r" && t[1]?.startsWith("wss://") && t[2] !== "read")
             .map((t) => t[1].replace(/\/$/, ""));
-          relays = [...new Set([...DEFAULT_RELAYS, ...own])];
+          relays = [...new Set([...LISTING_RELAYS, ...own])];
         } catch {
           // fall back to the defaults
         }

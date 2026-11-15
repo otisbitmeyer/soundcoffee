@@ -12,6 +12,11 @@ export const DEFAULT_RELAYS = [
   "wss://relay.nostr.band",
 ];
 
+// Extra relays read only when loading product listings — marketplaces
+// like Conduit publish to their own relay, which a shopper's general
+// Nostr traffic (zaps, DMs, boosts) has no need to touch.
+export const LISTING_RELAYS = [...DEFAULT_RELAYS, "wss://relay.conduit.market"];
+
 let dmRelayPool;
 function getDmRelayPool() {
   if (!dmRelayPool) dmRelayPool = new SimplePool();
