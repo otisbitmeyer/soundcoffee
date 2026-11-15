@@ -105,9 +105,28 @@ export function useNip99Listings(pubkey) {
       try {
         const p = getPool();
 
+        // NIP-65: the seller's own relay list (kind 10002) says where
+        // they actually publish. Apps like Conduit may post listings to
+        // those relays and not to our default four, so query both.
+        let relays = DEFAULT_RELAYS;
+        try {
+          const relayLists = await p.querySync(
+            DEFAULT_RELAYS,
+            { kinds: [10002], authors: [pubkey] },
+            { maxWait: 4000 }
+          );
+          const newest = relayLists.sort((a, b) => b.created_at - a.created_at)[0];
+          const own = (newest?.tags || [])
+            .filter((t) => t[0] === "r" && t[1]?.startsWith("wss://") && t[2] !== "read")
+            .map((t) => t[1].replace(/\/$/, ""));
+          relays = [...new Set([...DEFAULT_RELAYS, ...own])];
+        } catch {
+          // fall back to the defaults
+        }
+
         const [listingEvents, deletionEvents] = await Promise.all([
-          p.querySync(DEFAULT_RELAYS, { kinds: [30402], authors: [pubkey] }),
-          p.querySync(DEFAULT_RELAYS, { kinds: [5], authors: [pubkey] }),
+          p.querySync(relays, { kinds: [30402], authors: [pubkey] }, { maxWait: 6000 }),
+          p.querySync(relays, { kinds: [5], authors: [pubkey] }, { maxWait: 6000 }),
         ]);
 
         if (cancelled) return;
