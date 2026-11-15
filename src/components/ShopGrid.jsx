@@ -58,13 +58,18 @@ function SellerListings({ seller }) {
 
   if (!listings || visibleListings.length === 0) {
     return (
-      <p className="mt-12 font-serif italic text-ink/50">
-        No products listed yet &mdash; check back soon.
-      </p>
+      <>
+        {searchParams.get("debug") && <ListingDebugPanel allListings={allListings} />}
+        <p className="mt-12 font-serif italic text-ink/50">
+          No products listed yet &mdash; check back soon.
+        </p>
+      </>
     );
   }
 
   return (
+    <>
+    {searchParams.get("debug") && <ListingDebugPanel allListings={allListings} />}
     <div
       className="mt-12 grid justify-center gap-8"
       style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 300px))" }}
@@ -77,6 +82,34 @@ function SellerListings({ seller }) {
           allListings={allListings}
         />
       ))}
+    </div>
+    </>
+  );
+}
+
+// Visit /shop?debug=1 to see every listing the relays returned and why
+// each one is or isn't shown in the grid.
+function ListingDebugPanel({ allListings }) {
+  return (
+    <div className="mx-auto mt-8 max-w-3xl border-2 border-ink/30 bg-ink/5 p-4 font-mono text-xs text-ink">
+      <p className="font-display tracking-widest">LISTING DIAGNOSTIC ({allListings?.length ?? 0} found)</p>
+      <ul className="mt-2 space-y-2">
+        {(allListings || []).map((l) => {
+          const reason =
+            l.productType === "variation"
+              ? "NOT SHOWN — variation of another product"
+              : l.visibility === "hidden"
+              ? "NOT SHOWN — visibility: hidden"
+              : "shown";
+          return (
+            <li key={l.id}>
+              <strong>{l.title}</strong> — {reason}
+              <br />
+              type: {l.productType}/{l.format} · status: {l.status} · visibility: {l.visibility} · d: {l.dTag}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
