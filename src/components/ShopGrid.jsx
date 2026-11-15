@@ -1,13 +1,28 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useNip99Listings } from "@/hooks/useNip99Listings";
 import { SELLERS } from "@/lib/sellers";
 import ProductCard from "./ProductCard";
 
 function SellerListings({ seller }) {
-  const { listings, allListings, loading, error } = useNip99Listings(seller.pubkey);
+  const { listings, allListings, loading: listingsLoading, error } = useNip99Listings(seller.pubkey);
+  // Listings the owner chose to hide from the public shop (Merchant
+  // Settings → Shop listings). If this can't load, show everything rather
+  // than an empty shop.
+  const [hiddenCoords, setHiddenCoords] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/hidden-listings")
+      .then((r) => r.json())
+      .then((d) => !cancelled && setHiddenCoords(new Set(d.hidden || [])))
+      .catch(() => !cancelled && setHiddenCoords(new Set()));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const loading = listingsLoading || hiddenCoords === null;
   const searchParams = useSearchParams();
   const sharedProduct = searchParams.get("product");
 
@@ -54,12 +69,13 @@ function SellerListings({ seller }) {
   // Some listings (event-specific ones from Conduit's market/event
   // feature, for instance) are explicitly marked not meant for general
   // display — scoped to a particular event rather than the shop itself.
-  const visibleListings = listings?.filter((l) => l.visibility !== "hidden") || [];
+  const visibleListings =
+    listings?.filter((l) => l.visibility !== "hidden" && !hiddenCoords?.has(l.coordinate)) || [];
 
   if (!listings || visibleListings.length === 0) {
     return (
       <>
-        {searchParams.get("debug") && <ListingDebugPanel allListings={allListings} />}
+        {searchParams.get("debug") && <ListingDebugPanel allListings={allListings} hiddenCoords={hiddenCoords} />}
         <p className="mt-12 font-serif italic text-ink/50">
           No products listed yet &mdash; check back soon.
         </p>
@@ -69,7 +85,7 @@ function SellerListings({ seller }) {
 
   return (
     <>
-    {searchParams.get("debug") && <ListingDebugPanel allListings={allListings} />}
+    {searchParams.get("debug") && <ListingDebugPanel allListings={allListings} hiddenCoords={hiddenCoords} />}
     <div
       className="mt-12 grid justify-center gap-8"
       style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 300px))" }}
@@ -89,7 +105,7 @@ function SellerListings({ seller }) {
 
 // Visit /shop?debug=1 to see every listing the relays returned and why
 // each one is or isn't shown in the grid.
-function ListingDebugPanel({ allListings }) {
+function ListingDebugPanel({ allListings, hiddenCoords }) {
   return (
     <div className="mx-auto mt-8 max-w-3xl border-2 border-ink/30 bg-ink/5 p-4 font-mono text-xs text-ink">
       <p className="font-display tracking-widest">LISTING DIAGNOSTIC ({allListings?.length ?? 0} found)</p>
@@ -100,6 +116,8 @@ function ListingDebugPanel({ allListings }) {
               ? "NOT SHOWN — variation of another product"
               : l.visibility === "hidden"
               ? "NOT SHOWN — visibility: hidden"
+              : hiddenCoords?.has(l.coordinate)
+              ? "NOT SHOWN — on your hide list"
               : "shown";
           return (
             <li key={l.id}>

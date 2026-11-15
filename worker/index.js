@@ -1475,6 +1475,38 @@ async function handleListDiscountUses(request, env) {
 }
 
 // ---------------------------------------------------------------------
+// Hidden listings — coordinates ("30402:<pubkey>:<d>") the shop should not
+// show publicly, whatever tags the publishing app put on them. Stored in
+// KV as one small JSON array, so no database migration is needed.
+// ---------------------------------------------------------------------
+
+async function readHiddenListings(env) {
+  try {
+    const raw = await env.SOUND_COFFEE_KV.get("hidden-listings");
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function handleListHiddenListings(env) {
+  return jsonResponse({ hidden: await readHiddenListings(env) });
+}
+
+async function handleSetListingHidden(request, env) {
+  const { coordinate, hidden } = await request.json();
+  if (!coordinate || typeof coordinate !== "string" || !coordinate.startsWith("30402:")) {
+    return jsonResponse({ error: "Missing or invalid listing coordinate." }, 422);
+  }
+  const current = new Set(await readHiddenListings(env));
+  if (hidden) current.add(coordinate);
+  else current.delete(coordinate);
+  await env.SOUND_COFFEE_KV.put("hidden-listings", JSON.stringify([...current]));
+  return jsonResponse({ ok: true, hidden: [...current] });
+}
+
+// ---------------------------------------------------------------------
 // Coffee Club — membership automatically entitles a buyer to a
 // discount at checkout, recognized by their logged-in pubkey, not a
 // code they have to type in.
@@ -2170,6 +2202,12 @@ async function handleFetch(request, env) {
   }
   if (request.method === "GET" && url.pathname === "/api/discounts/uses") {
     return handleListDiscountUses(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/hidden-listings") {
+    return handleListHiddenListings(env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/hidden-listings") {
+    return handleSetListingHidden(request, env);
   }
   if (request.method === "POST" && url.pathname === "/api/coffee-club") {
     return handleAddCoffeeClubMember(request, env);
