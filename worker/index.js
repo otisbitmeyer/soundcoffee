@@ -18,6 +18,7 @@
 // Cloudflare infrastructure — see WORKER-SETUP.md.
 
 import { SimplePool } from "nostr-tools/pool";
+import { verifyEvent } from "nostr-tools/pure";
 
 const DEFAULT_RELAYS = [
   "wss://relay.damus.io",
@@ -1507,6 +1508,58 @@ async function handleSetListingHidden(request, env) {
 }
 
 // ---------------------------------------------------------------------
+// Club roast — the coffee shown on /join ("This month's Sound Coffee").
+// Stored in KV. Anyone can read it; only the Sound Coffee key can change it,
+// proven by a signed Nostr event (kind 27235) posted with the new values.
+// ---------------------------------------------------------------------
+
+const CLUB_ROAST_FIELDS = { name: 120, origin: 160, producer: 160, process: 120, tasting: 400, story: 1200, note: 400 };
+
+async function handleGetClubRoast(env) {
+  try {
+    const raw = await env.SOUND_COFFEE_KV.get("club-roast");
+    return jsonResponse({ roast: raw ? JSON.parse(raw) : null });
+  } catch {
+    return jsonResponse({ roast: null });
+  }
+}
+
+async function handleSetClubRoast(request, env) {
+  let event;
+  try {
+    ({ event } = await request.json());
+  } catch {
+    return jsonResponse({ error: "Invalid request." }, 400);
+  }
+  const now = Math.floor(Date.now() / 1000);
+  if (
+    !event ||
+    event.kind !== 27235 ||
+    event.pubkey !== SOUND_COFFEE_PUBKEY ||
+    Math.abs(now - event.created_at) > 300 ||
+    !verifyEvent(event)
+  ) {
+    return jsonResponse({ error: "Not authorized. Log in as the Sound Coffee account and try again." }, 401);
+  }
+  let input;
+  try {
+    input = JSON.parse(event.content);
+  } catch {
+    return jsonResponse({ error: "Invalid roast data." }, 422);
+  }
+  const roast = {};
+  for (const [key, max] of Object.entries(CLUB_ROAST_FIELDS)) {
+    roast[key] = String(input[key] ?? "").trim().slice(0, max);
+  }
+  if (!roast.name) return jsonResponse({ error: "The coffee needs a name." }, 422);
+  const week = Number(input.roastWeek);
+  roast.roastWeek = week >= 1 && week <= 4 ? week : 2;
+  roast.updatedAt = now;
+  await env.SOUND_COFFEE_KV.put("club-roast", JSON.stringify(roast));
+  return jsonResponse({ ok: true, roast });
+}
+
+// ---------------------------------------------------------------------
 // Coffee Club — membership automatically entitles a buyer to a
 // discount at checkout, recognized by their logged-in pubkey, not a
 // code they have to type in.
@@ -2202,6 +2255,12 @@ async function handleFetch(request, env) {
   }
   if (request.method === "GET" && url.pathname === "/api/discounts/uses") {
     return handleListDiscountUses(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/club-roast") {
+    return handleGetClubRoast(env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/club-roast") {
+    return handleSetClubRoast(request, env);
   }
   if (request.method === "GET" && url.pathname === "/api/hidden-listings") {
     return handleListHiddenListings(env);

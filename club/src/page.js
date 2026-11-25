@@ -5,20 +5,37 @@ const $ = s => document.querySelector(s)
 const form = $('#signup')
 
 const recipient = toHexPubkey(C.ordersNpub)
-const notes = []
-if (!recipient) notes.push('This form doesn’t have an orders key yet, so nothing will be sent. Add your orders npub at the top of the file.')
-if (/PLACEHOLDER/.test(C.coffee.name + C.coffee.origin)) notes.push('The coffee name and origin are placeholders.')
-if (C.pricing.placeholder) notes.push('Prices and discounts are placeholders. Set them at the top of the file, then set <code>placeholder: false</code>.')
-if (notes.length) { $('#setup-note').hidden = false; $('#setup-note').innerHTML = '<strong>Setup mode.</strong> ' + notes.join(' ') }
+function refreshSetupNote() {
+  const n = []
+  if (!recipient) n.push('This form doesn’t have an orders key yet, so nothing will be sent. Add your orders npub at the top of the file.')
+  if (/PLACEHOLDER/.test(C.coffee.name + C.coffee.origin)) n.push('The coffee name and origin are placeholders. Set them in Merchant Settings, Club roast.')
+  if (C.pricing.placeholder) n.push('Prices and discounts are placeholders. Set them at the top of the file, then set <code>placeholder: false</code>.')
+  $('#setup-note').hidden = !n.length
+  if (n.length) $('#setup-note').innerHTML = '<strong>Setup mode.</strong> ' + n.join(' ')
+}
+refreshSetupNote()
 
-// Coffee and roast info
-const cf = C.coffee
-$('#coffee-h').textContent = cf.name
-$('#coffee-meta').textContent = [cf.origin, cf.producer, cf.process].filter(Boolean).join(' · ')
-$('#coffee-tasting').textContent = cf.tasting
-$('#coffee-story').textContent = cf.story
-$('#next-roast').textContent = 'Next roast: the week of ' + nextRoast(C.roast.roastWeek).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }) + '.'
-$('#roast-note').textContent = C.roast.note
+// Coffee and roast info. The page ships with the values in the config, then
+// swaps in whatever was last saved in Merchant Settings (Club roast).
+function renderRoast() {
+  const cf = C.coffee
+  $('#coffee-h').textContent = cf.name
+  $('#coffee-meta').textContent = [cf.origin, cf.producer, cf.process].filter(Boolean).join(' · ')
+  $('#coffee-tasting').textContent = cf.tasting
+  $('#coffee-story').textContent = cf.story
+  $('#next-roast').textContent = 'Next roast: the week of ' + nextRoast(C.roast.roastWeek).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }) + '.'
+  $('#roast-note').textContent = C.roast.note
+}
+renderRoast()
+fetch('/api/club-roast', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(d => {
+  const r = d && d.roast
+  if (!r || !r.name) return
+  for (const k of ['name', 'origin', 'producer', 'process', 'tasting', 'story']) C.coffee[k] = r[k] || ''
+  if (r.note) C.roast.note = r.note
+  if (r.roastWeek) C.roast.roastWeek = r.roastWeek
+  renderRoast()
+  refreshSetupNote()
+}).catch(() => {})
 
 // First day of the given week of this month (week 2 starts on the 8th),
 // or next month's if this month's has already ended.

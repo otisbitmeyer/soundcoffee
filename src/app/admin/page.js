@@ -6,6 +6,7 @@ import { nip19 } from "nostr-tools";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import ShopListingsAdmin from "@/components/ShopListingsAdmin";
+import ClubRoastAdmin from "@/components/ClubRoastAdmin";
 import { useAuth } from "@/context/AuthContext";
 import { useProfile } from "@/hooks/useProfile";
 import { DEFAULT_RELAYS } from "@/lib/relays";
@@ -738,6 +739,7 @@ export default function AdminPage() {
             </div>
           )}
 
+          {isRightAccount && <ClubRoastAdmin />}
           {isRightAccount && <ShopListingsAdmin />}
         </div>
       </main>
