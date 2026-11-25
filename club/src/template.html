@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Get Sound Coffee</title>
+<meta name="description" content="Sign up for a year of fresh roasts from Sound Coffee.">
+<script>
+/* ======================= EDIT ME =======================
+   Everything you'll want to change lives in this block.
+   ordersNpub: the npub of the key used ONLY for orders.
+   relays:     where orders get dropped off. Use your
+               orders key's inbox relays (NIP-17, kind 10050).
+   pricing:    price per bag in dollars and sats, and bag size.
+               bagDiscounts: % off for club members by bags
+               per roast. prepayPct: extra % off for paying
+               the year up front. The two add together.
+               Shipping is billed when each box ships, except
+               for members who pay the year up front.
+   ======================================================= */
+window.SIGNUP_CONFIG = {
+  ordersNpub: 'npub1REPLACE_WITH_YOUR_ORDERS_KEY',
+  relays: [
+    'wss://relay.damus.io',
+    'wss://nos.lol',
+    'wss://relay.primal.net',
+    'wss://relay.0xchat.com'
+  ],
+  pricing: {
+    placeholder: true,          // set to false once the numbers are real
+    bagUsd: 20,                 // PLACEHOLDER
+    bagSats: 20000,             // PLACEHOLDER
+    bagLbs: 1,                  // PLACEHOLDER: pounds per bag (0.75 for 12 oz)
+    maxLbsPerMonth: 20,
+    bagDiscounts: [             // PLACEHOLDER
+      { minBags: 2, pct: 5 },
+      { minBags: 3, pct: 10 },
+      { minBags: 4, pct: 15 },
+      { minBags: 10, pct: 20 }
+    ],
+    prepayPct: 5                // PLACEHOLDER
+  },
+  // When you roast. Next roast date is worked out from roastWeek.
+  roast: {
+    roastWeek: 2,   // 2 = second week of the month (days 8 to 14)
+    note: 'I roast once a month, during the second week, and send everything out right after.'
+  },
+
+  // The coffee in the bag right now. Change this when the coffee changes.
+  coffee: {
+    name: 'PLACEHOLDER coffee name',
+    origin: 'PLACEHOLDER origin',
+    producer: '',               // farm or producer, optional
+    process: '',                // washed, natural, honey… optional
+    tasting: 'Full body, sweet, with cherry juice on the finish.',
+    story: 'SOUND COFFEE is made to be an easy, everyday cup. The coffee changes from time to time as harvests come and go, and I adjust each roast to bring out its best.'
+  },
+
+  cadences: [
+    { id: 'monthly',   label: 'Every month',        perYear: 12 },
+    { id: 'bimonthly', label: 'Every other month',  perYear: 6 },
+    { id: 'quarterly', label: 'Every three months', perYear: 4 }
+  ]
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>/*SITECSS*/</style>
+</head>
+<body class="join">
+<header class="site-header">
+  <div class="bar">
+    <a href="/"><img src="/header-logo.png" alt="Sound Coffee" width="1137" height="384"></a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="/listening-lair">SOUND</a>
+      <a href="/shop">COFFEE</a>
+      <a href="/join" aria-current="page">CLUB</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="title">
+    <img src="/club-logo.png" alt="Sound Coffee" width="84" height="84">
+    <h1>Get Sound&nbsp;Coffee</h1>
+  </div>
+  <div class="layout">
+    <aside class="aside">
+      <p class="lede">Small-batch roasts from Otis Bitmeyer. Join the club for regular roasts at a discount, or order once. Tell me a little about you and I'll write back with your bill.</p>
+      <div class="note" id="setup-note" hidden></div>
+      <section class="coffee" aria-labelledby="coffee-h">
+    <p class="eyebrow">This month&rsquo;s Sound Coffee</p>
+    <h2 id="coffee-h"></h2>
+    <p class="meta" id="coffee-meta"></p>
+    <p class="tasting" id="coffee-tasting"></p>
+    <p id="coffee-story"></p>
+    <p class="roastline"><strong id="next-roast"></strong> <span id="roast-note"></span></p>
+  </section>
+    </aside>
+    <div class="formcol">
+      <form id="signup">
+    <div class="seg" role="radiogroup" aria-label="Join the club or order once">
+      <label><input type="radio" name="kind" value="club" checked><span>Join the club</span></label>
+      <label><input type="radio" name="kind" value="once"><span>Order once</span></label>
+    </div>
+
+    <fieldset>
+      <legend>Your name</legend>
+      <input type="text" name="name" autocomplete="name" required>
+    </fieldset>
+
+    <fieldset>
+      <legend>How can I reach you?</legend>
+      <p class="hint">An email, a Nostr key, or both. Updates and bills go here.</p>
+      <input type="email" name="email" autocomplete="email" placeholder="you@example.com" inputmode="email">
+      <input type="text" name="npub" placeholder="npub1… (optional)" autocapitalize="off" autocorrect="off" spellcheck="false">
+    </fieldset>
+
+    <fieldset>
+      <legend id="bags-legend">Bags each roast</legend>
+      <div class="stepper">
+        <button type="button" id="minus" aria-label="One fewer bag">−</button>
+        <input type="number" name="bags" value="1" min="1" inputmode="numeric" aria-labelledby="bags-legend">
+        <button type="button" id="plus" aria-label="One more bag">+</button>
+        <span id="bag-lbs" class="lbs"></span>
+      </div>
+      <p class="hint" id="bag-limit"></p>
+      <p class="hint" id="bag-hint" data-club></p>
+    </fieldset>
+
+    <fieldset data-club>
+      <legend>How often?</legend>
+      <div class="pills" id="cadences"></div>
+    </fieldset>
+
+    <fieldset data-club>
+      <legend>How would you like to pay over the year?</legend>
+      <label class="card"><input type="radio" name="plan" value="per-roast" checked><span class="card-body"><strong>Pay as each roast ships</strong></span></label>
+      <label class="card"><input type="radio" name="plan" value="prepay"><span class="card-body"><strong id="prepay-label">Pay the year up front</strong></span></label>
+    </fieldset>
+
+    <fieldset>
+      <legend>How should it reach you?</legend>
+      <div class="pills">
+        <label class="card"><input type="radio" name="delivery" value="ship" required checked> Ship it</label>
+        <label class="card"><input type="radio" name="delivery" value="deliver"> Hand delivery</label>
+        <label class="card"><input type="radio" name="delivery" value="pickup"> Pickup</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>How would you like to pay?</legend>
+      <div class="pills">
+        <label class="card"><input type="radio" name="pay" value="usd" required> Dollars (card)</label>
+        <label class="card"><input type="radio" name="pay" value="ln"> Lightning</label>
+        <label class="card"><input type="radio" name="pay" value="btc"> Bitcoin on-chain</label>
+        <label class="card" id="pay-cash"><input type="radio" name="pay" value="cash"> Cash</label>
+      </div>
+      <p class="hint" style="margin-top:8px">Nothing is charged now. I'll send your bill once I've confirmed your order.</p>
+    </fieldset>
+
+    <div class="quote" id="quote" aria-live="polite"></div>
+
+    <fieldset id="address">
+      <legend id="addr-legend">Shipping address</legend>
+      <input type="text" name="line1" placeholder="Street address" autocomplete="address-line1" data-req>
+      <input type="text" name="line2" placeholder="Apt, unit (optional)" autocomplete="address-line2">
+      <div class="row">
+        <input type="text" name="city" placeholder="City" autocomplete="address-level2" data-req>
+        <input type="text" name="region" placeholder="State" autocomplete="address-level1" data-req>
+      </div>
+      <div class="row">
+        <input type="text" name="postal" placeholder="ZIP" autocomplete="postal-code" inputmode="numeric" data-req>
+        <input type="text" name="country" placeholder="Country" autocomplete="country-name" value="USA">
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Anything else?</legend>
+      <textarea name="notes" placeholder="Grind, gift, a friend who sent you, a question…"></textarea>
+    </fieldset>
+
+    <div class="hp" aria-hidden="true"><label>Website <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+
+    <button id="send" type="submit">Send my sign-up</button>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+
+    <p class="small">Your order is sealed in your browser so only Sound Coffee can open it, then dropped off on a few public Nostr relays. No account needed, and this site keeps no copy.</p>
+  </form>
+      <div id="done" class="done" hidden>
+    <h2>Thank you, it's in.</h2>
+    <p>Your order number is <span class="ref" id="ref"></span>. Keep it handy in case we need to find it.</p>
+    <p>I'll reach out by <span id="done-contact"></span> <span id="done-what"></span></p>
+  </div>
+    </div>
+  </div>
+</main>
+<footer class="site-footer">
+  <div class="inner">
+    <a href="mailto:orders@soundcoffee.org">SEND AN EMAIL</a>
+    <img src="/logo-mark.png" alt="Sound Coffee">
+    <a href="https://njump.me/npub186pzq2z7xjma6gsjkm4kyeyvfck0lk4t9a6qmtht2pq9axyr73wshad0rk" target="_blank" rel="noopener noreferrer">CONNECT ON NOSTR</a>
+  </div>
+</footer>
+
+<script>/*BUNDLE*/</script>
+</body>
+</html>

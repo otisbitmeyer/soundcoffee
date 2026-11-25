@@ -1,0 +1,16 @@
+{
+  "name": "sound-coffee-pages",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "cd tests && node test.mjs && node test-member.mjs"
+  },
+  "dependencies": {
+    "nostr-tools": "^2.26.1",
+    "qrcode-generator": "^1.5.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

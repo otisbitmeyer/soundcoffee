@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Your Sound Coffee Club page</title>
+<script>
+/* ======================= EDIT ME =======================
+   dataPath: folder on your site holding the sealed
+             statement files the ledger uploads.
+   contactEmail: shown if someone's link doesn't work.
+   ======================================================= */
+window.MEMBER_CONFIG = {
+  dataPath: 'm/data/',
+  contactEmail: 'hello@REPLACE-WITH-YOUR-DOMAIN'
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>/*SITECSS*/</style>
+</head>
+<body class="member">
+<header class="site-header">
+  <div class="bar">
+    <a href="/"><img src="/header-logo.png" alt="Sound Coffee" width="1137" height="384"></a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="/listening-lair">SOUND</a>
+      <a href="/shop">COFFEE</a>
+      <a href="/join" >CLUB</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="title">
+    <img src="/club-logo.png" alt="Sound Coffee" width="84" height="84">
+    <h1 id="hello">Sound Coffee Club</h1>
+  </div>
+
+  <div id="loading" class="center muted">Opening your page…</div>
+  <div id="problem" class="center" hidden></div>
+
+  <div id="app" hidden>
+    <p class="note" id="demo-note" hidden><strong>Demo.</strong> This is sample data. Requests from this page go nowhere.</p>
+    <div class="sent" id="sent" hidden></div>
+
+    <div class="cols">
+      <div class="col">
+        <section class="dark" id="s-next"></section>
+        <section id="s-bills" hidden></section>
+        <section id="s-history" hidden></section>
+        <section id="s-changes"></section>
+      </div>
+      <div class="col">
+        <section id="s-menu" hidden></section>
+        <section id="s-message"></section>
+      </div>
+    </div>
+
+    <div class="foot">
+      <p class="small muted" id="updated"></p>
+      <p class="small muted">This page is just for you. Anyone with this link can see it, so keep it like a key. If it ever gets shared by mistake, let me know and I'll send you a new one.</p>
+    </div>
+  </div>
+</main>
+<footer class="site-footer">
+  <div class="inner">
+    <a href="mailto:orders@soundcoffee.org">SEND AN EMAIL</a>
+    <img src="/logo-mark.png" alt="Sound Coffee">
+    <a href="https://njump.me/npub186pzq2z7xjma6gsjkm4kyeyvfck0lk4t9a6qmtht2pq9axyr73wshad0rk" target="_blank" rel="noopener noreferrer">CONNECT ON NOSTR</a>
+  </div>
+</footer>
+
+<script>/*BUNDLE*/</script>
+</body>
+</html>
