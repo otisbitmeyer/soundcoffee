@@ -100,8 +100,10 @@ function renderQuote() {
     h += row('Each roast', m('perDelivery'), 'strong')
     h += row(`A year (${q.usd.deliveries} roasts)`, m('year'), 'strong')
     if (off) h += row('You save', `${cur === 'sats' ? sats(q.sats.yearFull - q.sats.year) : usd(q.usd.yearFull - q.usd.year)} a year`, 'disc')
+    const pick = s.delivery === 'pickup'
     h += `<p class="qnote">${s.plan === 'prepay'
-      ? 'One payment for the year, before your first roast, with shipping included.'
+      ? 'One payment for the year, before your first roast' + (pick ? '.' : ', with shipping included.')
+      : pick ? 'You pay for each roast when you pick it up.'
       : 'You pay for each roast as it ships' + (q.shipping === 'at-shipping' ? ', with shipping worked out when it’s packed. Pay the year up front and shipping is included.' : '.')}</p>`
   } else {
     h += row(`${q.bags} bag${q.bags > 1 ? 's' : ''}`, m('full'))
@@ -119,6 +121,7 @@ function update() {
   $('#send').textContent = k === 'club' ? 'Send my sign-up' : 'Send my order'
 
   const d = form.delivery.value
+  $('#plan-per-roast').textContent = d === 'pickup' ? 'You pay for each roast when you pick it up' : 'Pay as each roast ships'
   const addr = $('#address')
   addr.hidden = !(d === 'ship' || d === 'deliver')
   addr.querySelectorAll('[data-req]').forEach(i => { i.required = !addr.hidden })

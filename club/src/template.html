@@ -127,6 +127,17 @@ window.SIGNUP_CONFIG = {
       <p class="hint" id="bag-hint" data-club></p>
     </fieldset>
 
+    <fieldset>
+      <legend>How would you like to pay?</legend>
+      <div class="pills">
+        <label class="card"><input type="radio" name="pay" value="usd" required> Card</label>
+        <label class="card"><input type="radio" name="pay" value="ln"> Lightning</label>
+        <label class="card"><input type="radio" name="pay" value="btc"> Bitcoin on-chain</label>
+        <label class="card" id="pay-cash"><input type="radio" name="pay" value="cash"> Cash</label>
+      </div>
+      <p class="hint" style="margin-top:8px">Nothing is charged now. I'll send your bill once I've confirmed your order.</p>
+    </fieldset>
+
     <fieldset data-club>
       <legend>How often?</legend>
       <div class="pills" id="cadences"></div>
@@ -134,7 +145,7 @@ window.SIGNUP_CONFIG = {
 
     <fieldset data-club>
       <legend>How would you like to pay over the year?</legend>
-      <label class="card"><input type="radio" name="plan" value="per-roast" checked><span class="card-body"><strong>Pay as each roast ships</strong></span></label>
+      <label class="card"><input type="radio" name="plan" value="per-roast" checked><span class="card-body"><strong id="plan-per-roast">Pay as each roast ships</strong></span></label>
       <label class="card"><input type="radio" name="plan" value="prepay"><span class="card-body"><strong id="prepay-label">Pay the year up front</strong></span></label>
     </fieldset>
 
@@ -145,17 +156,6 @@ window.SIGNUP_CONFIG = {
         <label class="card"><input type="radio" name="delivery" value="deliver"> Hand delivery</label>
         <label class="card"><input type="radio" name="delivery" value="pickup"> Pickup</label>
       </div>
-    </fieldset>
-
-    <fieldset>
-      <legend>How would you like to pay?</legend>
-      <div class="pills">
-        <label class="card"><input type="radio" name="pay" value="usd" required> Dollars (card)</label>
-        <label class="card"><input type="radio" name="pay" value="ln"> Lightning</label>
-        <label class="card"><input type="radio" name="pay" value="btc"> Bitcoin on-chain</label>
-        <label class="card" id="pay-cash"><input type="radio" name="pay" value="cash"> Cash</label>
-      </div>
-      <p class="hint" style="margin-top:8px">Nothing is charged now. I'll send your bill once I've confirmed your order.</p>
     </fieldset>
 
     <div class="quote" id="quote" aria-live="polite"></div>
