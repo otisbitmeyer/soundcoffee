@@ -92,7 +92,8 @@ textarea { min-height: 96px; resize: vertical; }
 .join .layout { display: grid; gap: 32px; max-width: 820px; }
 @media (min-width: 900px) {
   .join .layout { max-width: 1180px; }
-  .join .aside { max-width: 820px; }
+  .join .aside { max-width: 820px; margin: 0 auto; text-align: center; }
+  .join .aside .note { text-align: left; }
   /* Form on the left, the running price on the right and it stays in view */
   .join #signup { display: grid; grid-template-columns: minmax(0, 1fr) 340px; column-gap: 48px; align-items: start; }
   .join #signup > * { grid-column: 1; }
