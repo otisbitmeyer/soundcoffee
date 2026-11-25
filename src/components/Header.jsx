@@ -77,6 +77,8 @@ export default function Header() {
           <nav className="hidden items-center gap-8 font-display text-sm tracking-widest text-ink sm:flex">
             <Link href="/listening-lair" className="hover:text-rust">SOUND</Link>
             <Link href="/shop" className="hover:text-rust">COFFEE</Link>
+            {/* Plain <a>: /join is a standalone static page, not a Next route */}
+            <a href="/join" className="hover:text-rust">CLUB</a>
           </nav>
 
           <div className="flex items-center gap-3 sm:hidden">
@@ -210,6 +212,12 @@ export default function Header() {
             >
               COFFEE
             </Link>
+            <a
+              href="/join"
+              className="border-t border-ink/10 px-6 py-3 hover:bg-ink hover:text-paper"
+            >
+              CLUB
+            </a>
           </nav>
         )}
       </header>

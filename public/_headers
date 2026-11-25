@@ -1,0 +1,25 @@
+# Headers for the Sound Coffee club pages (from the website packet).
+
+/m/data/*
+  Cache-Control: no-store
+  X-Robots-Tag: noindex
+
+/member.html
+  X-Robots-Tag: noindex
+  Referrer-Policy: no-referrer
+  Cache-Control: no-cache
+
+/member
+  X-Robots-Tag: noindex
+  Referrer-Policy: no-referrer
+  Cache-Control: no-cache
+
+# Kept out of search while the page is in setup mode (placeholder coffee and
+# prices). Delete these two lines when the real numbers are in.
+/join.html
+  Cache-Control: no-cache
+  X-Robots-Tag: noindex
+
+/join
+  Cache-Control: no-cache
+  X-Robots-Tag: noindex

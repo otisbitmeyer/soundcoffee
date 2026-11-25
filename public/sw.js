@@ -29,6 +29,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Club member pages and their sealed statements must always be fresh —
+  // a stale statement would show someone the wrong bill.
+  if (url.pathname.startsWith("/m/") || url.pathname.startsWith("/member")) {
+    return;
+  }
+
   // Only handle our own origin — never intercept requests to relays,
   // Stripe, rss2json fallbacks, or anywhere else.
   if (url.origin !== self.location.origin) {
