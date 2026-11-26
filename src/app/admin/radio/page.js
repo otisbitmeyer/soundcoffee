@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { adminFetch } from "@/lib/adminFetch";
 import { nip19 } from "nostr-tools";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
@@ -30,7 +31,7 @@ function CuratedFeedRow({ feed, previewEndpoint, addingEpisodeGuid, onAddEpisode
     if (next && episodes === null) {
       setLoading(true);
       try {
-        const res = await fetch(`${previewEndpoint}?url=${encodeURIComponent(feed.feedUrl)}`);
+        const res = await adminFetch(`${previewEndpoint}?url=${encodeURIComponent(feed.feedUrl)}`);
         const data = await res.json();
         setEpisodes(data.recentEpisodes || []);
       } catch {
@@ -214,7 +215,7 @@ export default function AdminRadio() {
 
   async function fetchMusicFeeds() {
     try {
-      const res = await fetch("/api/radio-music-feeds");
+      const res = await adminFetch("/api/radio-music-feeds");
       const data = await res.json();
       setMusicFeeds(data.feeds || []);
     } catch {
@@ -228,7 +229,7 @@ export default function AdminRadio() {
     setMusicPreviewError("");
     setMusicPreview(null);
     try {
-      const res = await fetch(`/api/radio-podcasts/preview?url=${encodeURIComponent(musicFeedUrlInput.trim())}`);
+      const res = await adminFetch(`/api/radio-podcasts/preview?url=${encodeURIComponent(musicFeedUrlInput.trim())}`);
       const data = await res.json();
       if (data.error) {
         setMusicPreviewError(data.error);
@@ -252,7 +253,7 @@ export default function AdminRadio() {
           ? nip19.decode(musicNpubInput.trim()).data
           : musicNpubInput.trim();
       }
-      await fetch("/api/radio-music-feeds", {
+      await adminFetch("/api/radio-music-feeds", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -272,7 +273,7 @@ export default function AdminRadio() {
   }
 
   async function handleRemoveMusicFeed(feedUrl) {
-    await fetch("/api/radio-music-feeds/remove", {
+    await adminFetch("/api/radio-music-feeds/remove", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ feedUrl }),
@@ -282,7 +283,7 @@ export default function AdminRadio() {
 
   async function fetchPlaylist() {
     try {
-      const res = await fetch("/api/radio-playlist");
+      const res = await adminFetch("/api/radio-playlist");
       const data = await res.json();
       setPlaylist(data.episodes || []);
     } catch {
@@ -291,7 +292,7 @@ export default function AdminRadio() {
   }
 
   async function handleRemoveFromPlaylist(guid) {
-    await fetch("/api/radio-playlist/remove", {
+    await adminFetch("/api/radio-playlist/remove", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ guid }),
@@ -307,7 +308,7 @@ export default function AdminRadio() {
     [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
     setPlaylist(reordered); // optimistic — feels instant, synced below
 
-    fetch("/api/radio-playlist/reorder", {
+    adminFetch("/api/radio-playlist/reorder", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ guids: reordered.map((e) => e.guid) }),
@@ -316,7 +317,7 @@ export default function AdminRadio() {
 
   async function fetchPodcasts() {
     try {
-      const res = await fetch("/api/radio-podcasts");
+      const res = await adminFetch("/api/radio-podcasts");
       const data = await res.json();
       setPodcasts(data.podcasts || []);
     } catch {
@@ -330,7 +331,7 @@ export default function AdminRadio() {
     setPreviewError("");
     setPreview(null);
     try {
-      const res = await fetch(`/api/radio-podcasts/preview?url=${encodeURIComponent(feedUrlInput.trim())}`);
+      const res = await adminFetch(`/api/radio-podcasts/preview?url=${encodeURIComponent(feedUrlInput.trim())}`);
       const data = await res.json();
       if (data.error) {
         setPreviewError(data.error);
@@ -354,7 +355,7 @@ export default function AdminRadio() {
           ? nip19.decode(npubInput.trim()).data
           : npubInput.trim();
       }
-      await fetch("/api/radio-podcasts", {
+      await adminFetch("/api/radio-podcasts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -374,7 +375,7 @@ export default function AdminRadio() {
   }
 
   async function handleRemove(feedUrl) {
-    await fetch("/api/radio-podcasts/remove", {
+    await adminFetch("/api/radio-podcasts/remove", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ feedUrl }),
@@ -389,7 +390,7 @@ export default function AdminRadio() {
   }
 
   async function handleEditPodcastRecipient(podcast, npubInput) {
-    await fetch("/api/radio-podcasts", {
+    await adminFetch("/api/radio-podcasts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -403,7 +404,7 @@ export default function AdminRadio() {
   }
 
   async function handleEditMusicFeedRecipient(feed, npubInput) {
-    await fetch("/api/radio-music-feeds", {
+    await adminFetch("/api/radio-music-feeds", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -426,7 +427,7 @@ export default function AdminRadio() {
           ? nip19.decode(npub.trim()).data
           : npub.trim();
       }
-      await fetch("/api/radio-playlist", {
+      await adminFetch("/api/radio-playlist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

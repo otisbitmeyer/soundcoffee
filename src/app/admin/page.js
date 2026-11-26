@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { adminFetch } from "@/lib/adminFetch";
 import { SimplePool } from "nostr-tools/pool";
 import { nip19 } from "nostr-tools";
 import Header from "@/components/Header";
@@ -126,7 +127,7 @@ export default function AdminPage() {
 
   async function fetchDiscounts() {
     try {
-      const res = await fetch("/api/discounts");
+      const res = await adminFetch("/api/discounts");
       const data = await res.json();
       setDiscounts(data.discounts || []);
     } catch {
@@ -154,7 +155,7 @@ export default function AdminPage() {
       if (to) params.set("to", to);
     }
     try {
-      const res = await fetch(`/api/discounts/uses?${params.toString()}`);
+      const res = await adminFetch(`/api/discounts/uses?${params.toString()}`);
       const data = await res.json();
       setDiscountUses(data.uses || []);
     } catch {
@@ -164,7 +165,7 @@ export default function AdminPage() {
 
   async function fetchMembers() {
     try {
-      const res = await fetch("/api/coffee-club");
+      const res = await adminFetch("/api/coffee-club");
       const data = await res.json();
       setMembers(data.members || []);
     } catch {
@@ -187,7 +188,7 @@ export default function AdminPage() {
     try {
       const trimmed = newMemberNpub.trim();
       const pubkeyToAdd = trimmed.startsWith("npub1") ? nip19.decode(trimmed).data : trimmed;
-      await fetch("/api/coffee-club", {
+      await adminFetch("/api/coffee-club", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pubkey: pubkeyToAdd, discountPercent }),
@@ -202,7 +203,7 @@ export default function AdminPage() {
   }
 
   async function handleRemoveMember(memberPubkey) {
-    await fetch("/api/coffee-club/remove", {
+    await adminFetch("/api/coffee-club/remove", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pubkey: memberPubkey }),
@@ -245,7 +246,7 @@ export default function AdminPage() {
     setSavingDiscount(true);
     try {
       const allowedNpubs = parseNpubsInput(newNpubs);
-      const res = await fetch("/api/discounts", {
+      const res = await adminFetch("/api/discounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -269,7 +270,7 @@ export default function AdminPage() {
   }
 
   async function handleDeactivateDiscount(code) {
-    await fetch("/api/discounts/deactivate", {
+    await adminFetch("/api/discounts/deactivate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code }),

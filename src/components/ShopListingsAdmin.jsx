@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { adminFetch } from "@/lib/adminFetch";
 import { useNip99Listings } from "@/hooks/useNip99Listings";
 import { SOUND_COFFEE_PUBKEY } from "@/lib/identities";
 
@@ -32,7 +33,7 @@ export default function ShopListingsAdmin() {
     setBusy(listing.coordinate);
     setError("");
     try {
-      const res = await fetch("/api/hidden-listings", {
+      const res = await adminFetch("/api/hidden-listings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ coordinate: listing.coordinate, hidden: nowHidden }),

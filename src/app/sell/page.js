@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { adminFetch } from "@/lib/adminFetch";
 import { SimplePool } from "nostr-tools/pool";
 import { nip19 } from "nostr-tools";
 import Header from "@/components/Header";
@@ -49,7 +50,7 @@ function ListingRow({ listing, pubkey, signEvent, onDeleted, onEdit }) {
     setSavingStock(true);
     setStockSaved(false);
     try {
-      await fetch("/api/inventory/init", {
+      await adminFetch("/api/inventory/init", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -424,7 +425,7 @@ export default function SellPage() {
           // check against this, not the Nostr tag (which only updates
           // when you click "sync stock" later).
           if (v.stock) {
-            fetch("/api/inventory/init", {
+            adminFetch("/api/inventory/init", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({

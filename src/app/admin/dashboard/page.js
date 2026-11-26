@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { adminFetch } from "@/lib/adminFetch";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import { useAuth } from "@/context/AuthContext";
@@ -81,7 +82,7 @@ export default function AdminDashboard() {
   async function fetchSummary() {
     const { from, to } = currentRange();
     try {
-      const res = await fetch(`/api/sales-summary?from=${from}&to=${to}`);
+      const res = await adminFetch(`/api/sales-summary?from=${from}&to=${to}`);
       const data = await res.json();
       setSummary(data);
     } catch {

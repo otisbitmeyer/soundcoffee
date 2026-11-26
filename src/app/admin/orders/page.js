@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, Fragment, Component } from "react";
+import { adminFetch } from "@/lib/adminFetch";
 import { SimplePool } from "nostr-tools/pool";
 import { nip19 } from "nostr-tools";
 import Header from "@/components/Header";
@@ -242,7 +243,8 @@ class OrderDetailErrorBoundary extends Component {
   }
 }
 
-function OrderDetail({ order, messages, onSend, onMarkShipped }) {
+function OrderDetail({ order, messages, onSend, onMarkShipped, onMarkPaid }) {
+  const [markingPaid, setMarkingPaid] = useState(false);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [tracking, setTracking] = useState(order.trackingNumber || "");
@@ -291,6 +293,30 @@ function OrderDetail({ order, messages, onSend, onMarkShipped }) {
                 </p>
                 <p className="mt-1">{order.notes}</p>
               </>
+            )}
+
+            {order.fromD1 && !order.paidD1 && (
+              <div className="mt-4 border-t border-ink/10 pt-3">
+                <p className="font-display text-xs tracking-widest text-ink/50">PAYMENT</p>
+                <p className="mt-1 text-rust">Not confirmed yet.</p>
+                <button
+                  onClick={async () => {
+                    setMarkingPaid(true);
+                    try {
+                      await onMarkPaid(order);
+                    } finally {
+                      setMarkingPaid(false);
+                    }
+                  }}
+                  disabled={markingPaid}
+                  className="mt-2 w-full border-2 border-ink bg-ink px-3 py-2 font-display text-xs tracking-widest text-paper hover:bg-jade hover:border-jade disabled:opacity-50"
+                >
+                  {markingPaid ? "MARKING PAID…" : "MARK PAID (I SAW THE PAYMENT)"}
+                </button>
+                <p className="mt-1 text-[11px] italic text-ink/40">
+                  Only use this after you&apos;ve seen the money arrive. It sends the buyer their confirmation.
+                </p>
+              </div>
             )}
 
             {order.fromD1 && (
@@ -462,7 +488,7 @@ export default function OrdersPage() {
         // D1 is now the authoritative source for orders placed through
         // this site — real primary-key uniqueness, no risk of the same
         // order showing up twice the way relay-scanned DMs sometimes did.
-        const d1Res = await fetch("/api/orders");
+        const d1Res = await adminFetch("/api/orders");
         const d1Data = await d1Res.json();
         if (!d1Res.ok) {
           throw new Error(d1Data.error || `Server returned ${d1Res.status}`);
@@ -500,7 +526,7 @@ export default function OrdersPage() {
         // of which specific relays we'd individually added.
         let dynamicRelays = [];
         try {
-          const relaysRes = await fetch("/api/relays");
+          const relaysRes = await adminFetch("/api/relays");
           const relaysData = await relaysRes.json();
           dynamicRelays = relaysData.relays || [];
         } catch {
@@ -653,7 +679,7 @@ export default function OrdersPage() {
         // Server-side dedup means this is safe to call on every load.
         for (const order of foundOrders) {
           if (order.fromD1) continue;
-          fetch("/api/notify-order-detected", {
+          adminFetch("/api/notify-order-detected", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -671,7 +697,7 @@ export default function OrdersPage() {
           // stock, same distinction our own reserve/commit flow makes.
           // Dedup'd server-side, safe to call on every dashboard load.
           if (foundPaidIds.has(order.orderId) && order.items?.length) {
-            fetch("/api/inventory/decrement-external", {
+            adminFetch("/api/inventory/decrement-external", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ orderId: order.orderId, items: order.items }),
@@ -716,7 +742,7 @@ export default function OrdersPage() {
     }
 
     if (order.email) {
-      fetch("/api/notify-message", {
+      adminFetch("/api/notify-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId: order.orderId, buyerEmail: order.email, message: text }),
@@ -770,10 +796,20 @@ export default function OrdersPage() {
     await Promise.any(getPublishPool().publish(DEFAULT_RELAYS, toSelf));
   }
 
+  async function handleMarkPaid(order) {
+    const res = await adminFetch("/api/orders/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: order.orderId }),
+    });
+    if (!res.ok) return;
+    setOrders((prev) => prev.map((o) => (o.orderId === order.orderId ? { ...o, paidD1: true } : o)));
+  }
+
   async function handleMarkShipped(order, { trackingNumber, carrier }) {
     // Update D1 first — this is the record of truth, and should succeed
     // even if the notification step below has trouble.
-    await fetch("/api/orders/ship", {
+    await adminFetch("/api/orders/ship", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: order.orderId, trackingNumber, carrier }),
@@ -797,7 +833,7 @@ export default function OrdersPage() {
 
     // Email — independent of the Nostr path, sent if they left an address.
     if (order.email) {
-      fetch("/api/notify-shipped", {
+      adminFetch("/api/notify-shipped", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1148,6 +1184,7 @@ export default function OrdersPage() {
                                 messages={messagesByOrder[order.orderId] || []}
                                 onSend={handleSendMessage}
                                 onMarkShipped={handleMarkShipped}
+                                onMarkPaid={handleMarkPaid}
                               />
                             </OrderDetailErrorBoundary>
                           )}

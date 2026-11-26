@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
+import { setAdminSigner } from "@/lib/adminFetch";
 import { generateSecretKey, getPublicKey, finalizeEvent } from "nostr-tools/pure";
 import { nsecEncode, npubEncode, decode } from "nostr-tools/nip19";
 import { getConversationKey, encrypt as nip44EncryptRaw, decrypt as nip44DecryptRaw } from "nostr-tools/nip44";
@@ -290,6 +291,11 @@ export function AuthProvider({ children }) {
     },
     [pubkey, method, secretKey]
   );
+
+  // Lets admin pages sign in to the Worker with whichever login is active.
+  useEffect(() => {
+    setAdminSigner(signEvent);
+  }, [signEvent]);
 
   const npub = pubkey ? npubEncode(pubkey) : null;
 

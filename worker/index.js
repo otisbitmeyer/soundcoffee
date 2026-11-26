@@ -19,6 +19,7 @@
 
 import { SimplePool } from "nostr-tools/pool";
 import { verifyEvent } from "nostr-tools/pure";
+import { decode as decodeBolt11 } from "light-bolt11-decoder";
 
 const DEFAULT_RELAYS = [
   "wss://relay.damus.io",
@@ -228,6 +229,19 @@ async function handlePendingPayment(request, env) {
   if (type !== "zap" && type !== "purchase") {
     return jsonResponse({ error: "type must be 'zap' or 'purchase'." }, 422);
   }
+  if (
+    typeof id !== "string" || !/^[A-Za-z0-9_-]{8,80}$/.test(id) ||
+    typeof pubkey !== "string" || !/^[0-9a-f]{64}$/.test(pubkey) ||
+    typeof invoice !== "string" || invoice.length > 4000 ||
+    !Number.isFinite(Number(amountSats)) || Number(amountSats) < 0 ||
+    (verifyUrl && (typeof verifyUrl !== "string" || verifyUrl.length > 1000))
+  ) {
+    return jsonResponse({ error: "Invalid payment details." }, 422);
+  }
+  // Someone else's pending record can't be overwritten by reusing its id.
+  if (await env.SOUND_COFFEE_KV.get(`pending:${id}`)) {
+    return jsonResponse({ ok: true, existing: true });
+  }
 
   // Permanent marker (no expiration) — this is what keeps a one-time
   // guest identity from ever accumulating club membership, no matter
@@ -303,7 +317,32 @@ async function handleBrantaVerify(request, env) {
  * `rows` is an array of { label, value } pairs, rendered as a simple
  * two-column table — the actual order details.
  */
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** Escapes text, then turns line breaks into <br> (for multi-line values). */
+function escapeHtmlMultiline(value) {
+  return escapeHtml(value).replace(/\r?\n/g, "<br>");
+}
+
+/**
+ * Every value is escaped by default, because order fields (names, notes,
+ * addresses, item titles) come straight from buyers. A row can set
+ * html: true only when its value was already built from escaped pieces.
+ */
 function renderOrderEmailHtml({ heading, intro, rows, ctaText, ctaUrl }) {
+  const safeCtaUrl = ctaUrl && /^https:\/\//i.test(ctaUrl) ? escapeHtml(ctaUrl) : "";
+  ctaUrl = safeCtaUrl;
+  heading = escapeHtml(heading);
+  intro = intro ? escapeHtml(intro) : intro;
+  ctaText = ctaText ? escapeHtml(ctaText) : ctaText;
+  rows = rows.map((r) => ({ ...r, value: r.html ? r.value : escapeHtml(r.value) }));
   const rowsHtml = rows
     .filter((r) => r.value)
     .map(
@@ -470,7 +509,7 @@ async function handleNotifyMessage(request, env) {
         heading: "A message about your order",
         rows: [
           { label: "ORDER ID", value: orderId },
-          { label: "MESSAGE", value: message.replace(/\n/g, "<br>") },
+          { label: "MESSAGE", value: escapeHtmlMultiline(message), html: true },
         ],
       }),
     });
@@ -1086,7 +1125,7 @@ async function sendOrderConfirmedEmails(env, orderRow) {
     { label: "ITEM", value: `${itemTitle} &times;${quantity}` },
     { label: "ORDER ID", value: orderRow.id },
     { label: "AMOUNT", value: amountLine },
-    { label: "SHIPPING ADDRESS", value: address ? address.replace(/\n/g, "<br>") : null },
+    { label: "SHIPPING ADDRESS", value: address ? escapeHtmlMultiline(address) : null, html: true },
     { label: "NOTES", value: orderRow.notes },
   ];
 
@@ -1417,7 +1456,16 @@ async function handleValidateDiscount(request, env) {
 async function handleRedeemDiscount(request, env) {
   const { code, buyerPubkey, orderId } = await request.json();
   if (!code) return jsonResponse({ error: "Missing code." }, 422);
-  const normalizedCode = code.trim().toUpperCase();
+  const normalizedCode = String(code).trim().toUpperCase();
+  if (!orderId) return jsonResponse({ error: "Missing orderId." }, 422);
+
+  // A code only counts once per real order.
+  const order = await env.DB.prepare(`SELECT id FROM orders WHERE id = ?`).bind(orderId).first();
+  if (!order) return jsonResponse({ error: "No such order." }, 404);
+  const already = await env.DB.prepare(`SELECT 1 AS x FROM discount_code_uses WHERE code = ? AND order_id = ?`)
+    .bind(normalizedCode, orderId)
+    .first();
+  if (already) return jsonResponse({ ok: true, existing: true });
 
   await env.DB.prepare(`UPDATE discount_codes SET uses_count = uses_count + 1 WHERE code = ?`)
     .bind(normalizedCode)
@@ -1752,14 +1800,11 @@ async function handlePodcastFeed(request, env) {
   if (!feedUrl) return jsonResponse({ error: "Missing ?url=" }, 422);
 
   try {
-    const res = await fetch(feedUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; SoundCoffeeBot/1.0)" },
-    });
+    const { res, text: feedText } = await fetchPublic(feedUrl);
     if (!res.ok) {
       return jsonResponse({ error: `Feed returned ${res.status}` }, 502);
     }
-    const xml = await res.text();
-    const { feedInfo, items } = parsePodcastRss(xml);
+    const { feedInfo, items } = parsePodcastRss(feedText);
     return jsonResponse({ status: "ok", feedInfo, items });
   } catch (e) {
     return jsonResponse({ error: e.message }, 502);
@@ -1777,13 +1822,11 @@ async function handlePodcastChapters(request, env) {
   if (!chaptersUrl) return jsonResponse({ error: "Missing ?url=" }, 422);
 
   try {
-    const res = await fetch(chaptersUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; SoundCoffeeBot/1.0)" },
-    });
+    const { res, text: chaptersText } = await fetchPublic(chaptersUrl, { maxBytes: 2_000_000 });
     if (!res.ok) {
       return jsonResponse({ error: `Chapters file returned ${res.status}` }, 502);
     }
-    const data = await res.json();
+    const data = JSON.parse(chaptersText);
     // Spec shape: { version, chapters: [{ startTime, title, img?, url? }] }
     // — passed through as-is, just proxied for CORS, not reshaped.
     return jsonResponse(data);
@@ -1809,11 +1852,8 @@ async function handlePreviewRadioFeed(request, env) {
   if (!feedUrl) return jsonResponse({ error: "Missing ?url=" }, 422);
 
   try {
-    const res = await fetch(feedUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; SoundCoffeeBot/1.0)" },
-    });
+    const { res, text: xml } = await fetchPublic(feedUrl);
     if (!res.ok) return jsonResponse({ error: `Feed returned ${res.status}` }, 502);
-    const xml = await res.text();
     const { feedInfo, items } = parsePodcastRss(xml);
     if (!items || items.length === 0) {
       return jsonResponse({ error: "That feed has no episodes." }, 422);
@@ -2172,8 +2212,202 @@ async function handleDiagnoseEpisodeZaps(env) {
   return jsonResponse(diag);
 }
 
+// ---------------------------------------------------------------------
+// Security: admin sign-in, rate limits, safe outbound fetches
+// ---------------------------------------------------------------------
+//
+// Admin pages prove who they are once by signing a short-lived Nostr event
+// (kind 27235) with the Sound Coffee key. The Worker checks the signature
+// and hands back a random session token, kept in KV for 8 hours. Admin
+// routes then require "Authorization: Bearer <token>". The list below is
+// the single place that decides which routes need it.
+
+const ADMIN_SESSION_SECONDS = 60 * 60 * 8;
+
+const ADMIN_ROUTES = new Set([
+  "GET /api/orders",
+  "POST /api/orders/confirm",
+  "POST /api/orders/ship",
+  "POST /api/notify-order-detected",
+  "POST /api/notify-message",
+  "POST /api/notify-shipped",
+  "POST /api/inventory/init",
+  "POST /api/inventory/decrement-external",
+  "POST /api/discounts",
+  "GET /api/discounts",
+  "POST /api/discounts/deactivate",
+  "GET /api/discounts/uses",
+  "POST /api/hidden-listings",
+  "POST /api/coffee-club",
+  "GET /api/coffee-club",
+  "POST /api/coffee-club/remove",
+  "GET /api/club-members",
+  "GET /api/sales-summary",
+  "GET /api/radio-podcasts/preview",
+  "POST /api/radio-podcasts",
+  "POST /api/radio-podcasts/remove",
+  "POST /api/radio-music-feeds",
+  "GET /api/radio-music-feeds",
+  "POST /api/radio-music-feeds/remove",
+  "POST /api/radio-playlist",
+  "POST /api/radio-playlist/remove",
+  "POST /api/radio-playlist/reorder",
+  "GET /api/relays",
+  "GET /api/test-email",
+  "GET /api/diagnose-episode-zaps",
+  "POST /api/admin/recompute-stats",
+]);
+
+// Routes that stay open to everyone (shop, checkout, public pages, and the
+// webhooks, which check their own signatures). Kept as a list so a test can
+// confirm every route in the Worker was deliberately placed in one group.
+const PUBLIC_ROUTES = new Set([
+  "POST /api/pending-payment",
+  "POST /api/confirm-payment",
+  "POST /api/branta/verify",
+  "POST /api/create-square-checkout",
+  "POST /api/square-webhook",
+  "POST /api/stripe-webhook",
+  "GET /api/stats",
+  "GET /api/episode-zaps",
+  "GET /api/top-episodes",
+  "POST /api/orders",
+  "GET /api/inventory",
+  "POST /api/inventory/reserve",
+  "POST /api/discounts/validate",
+  "POST /api/discounts/redeem",
+  "GET /api/club-roast",
+  "POST /api/club-roast", // checks its own signed event
+  "GET /api/hidden-listings",
+  "GET /api/coffee-club/check",
+  "GET /api/podcast-feed",
+  "GET /api/podcast-chapters",
+  "GET /api/radio-podcasts",
+  "GET /api/radio-playlist",
+  "POST /api/admin/session", // checks its own signed event
+]);
+
+// Routes anyone can call that cost money or write data: limited per visitor.
+const RATE_LIMITS = {
+  "POST /api/pending-payment": [30, 60],
+  "POST /api/confirm-payment": [30, 60],
+  "POST /api/branta/verify": [20, 60],
+  "POST /api/create-square-checkout": [10, 60],
+  "POST /api/orders": [20, 60],
+  "POST /api/inventory/reserve": [20, 60],
+  "POST /api/discounts/validate": [20, 60],
+  "POST /api/discounts/redeem": [20, 60],
+  "POST /api/admin/session": [10, 60],
+};
+
+async function rateLimited(env, request, routeKey) {
+  const rule = RATE_LIMITS[routeKey];
+  if (!rule) return null;
+  const [limit, windowSeconds] = rule;
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const bucket = Math.floor(Date.now() / (windowSeconds * 1000));
+  const key = `rl:${routeKey}:${ip}:${bucket}`;
+  try {
+    const count = parseInt((await env.SOUND_COFFEE_KV.get(key)) || "0", 10);
+    if (count >= limit) {
+      return jsonResponse({ error: "Too many requests. Please wait a minute and try again." }, 429);
+    }
+    await env.SOUND_COFFEE_KV.put(key, String(count + 1), { expirationTtl: windowSeconds * 2 });
+  } catch {
+    // If the counter itself fails, let the request through rather than block real customers.
+  }
+  return null;
+}
+
+function randomToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Checks a signed kind-27235 event from the Sound Coffee key for this exact URL path. */
+function validSoundCoffeeEvent(event, pathname, maxAgeSeconds = 300) {
+  if (!event || event.kind !== 27235 || event.pubkey !== SOUND_COFFEE_PUBKEY) return false;
+  if (Math.abs(Math.floor(Date.now() / 1000) - event.created_at) > maxAgeSeconds) return false;
+  const u = event.tags?.find((t) => t[0] === "u")?.[1];
+  try {
+    if (!u || new URL(u).pathname !== pathname) return false;
+  } catch {
+    return false;
+  }
+  return verifyEvent(event);
+}
+
+async function handleAdminSession(request, env) {
+  let event;
+  try {
+    ({ event } = await request.json());
+  } catch {
+    return jsonResponse({ error: "Invalid request." }, 400);
+  }
+  if (!validSoundCoffeeEvent(event, "/api/admin/session", 120)) {
+    return jsonResponse({ error: "Not authorized. Log in as the Sound Coffee account and try again." }, 401);
+  }
+  const token = randomToken();
+  await env.SOUND_COFFEE_KV.put(`admin-session:${token}`, "1", { expirationTtl: ADMIN_SESSION_SECONDS });
+  return jsonResponse({ token, expiresIn: ADMIN_SESSION_SECONDS });
+}
+
+async function requireAdmin(request, env) {
+  const header = request.headers.get("Authorization") || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (/^[0-9a-f]{64}$/.test(token) && (await env.SOUND_COFFEE_KV.get(`admin-session:${token}`))) {
+    return null;
+  }
+  return jsonResponse({ error: "Admin sign-in required." }, 401);
+}
+
+/**
+ * Only plain https addresses on a real hostname. No IP addresses, no
+ * localhost, no custom ports. Cloudflare already keeps Workers off private
+ * networks; this stops the Worker being pointed at odd targets at all.
+ */
+function isSafePublicUrl(value) {
+  let u;
+  try {
+    u = new URL(value);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "https:" || u.port) return false;
+  const host = u.hostname.toLowerCase();
+  if (!host.includes(".") || host.endsWith(".local") || host.endsWith(".internal") || host === "localhost") return false;
+  if (/^[0-9.]+$/.test(host) || host.includes(":") || host.startsWith("[")) return false;
+  return true;
+}
+
+/** Fetches a public https page with a timeout and a size cap. */
+async function fetchPublic(url, { maxBytes = 5_000_000, accept } = {}) {
+  if (!isSafePublicUrl(url)) throw new Error("That address isn't allowed.");
+  const res = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; SoundCoffeeBot/1.0)", ...(accept ? { Accept: accept } : {}) },
+    signal: AbortSignal.timeout(8000),
+  });
+  const declared = parseInt(res.headers.get("content-length") || "0", 10);
+  if (declared > maxBytes) throw new Error("That file is too large.");
+  const text = await res.text();
+  if (text.length > maxBytes) throw new Error("That file is too large.");
+  return { res, text };
+}
+
 async function handleFetch(request, env) {
   const url = new URL(request.url);
+  const routeKey = `${request.method} ${url.pathname}`;
+
+  if (ADMIN_ROUTES.has(routeKey)) {
+    const denied = await requireAdmin(request, env);
+    if (denied) return denied;
+  }
+  const limited = await rateLimited(env, request, routeKey);
+  if (limited) return limited;
+
+  if (routeKey === "POST /api/admin/session") {
+    return handleAdminSession(request, env);
+  }
 
   if (request.method === "POST" && url.pathname === "/api/pending-payment") {
     return handlePendingPayment(request, env);
@@ -2192,9 +2426,6 @@ async function handleFetch(request, env) {
   }
   if (request.method === "POST" && url.pathname === "/api/notify-shipped") {
     return handleNotifyShipped(request, env);
-  }
-  if (request.method === "POST" && url.pathname === "/api/create-checkout-session") {
-    return handleCreateCheckoutSession(request, env);
   }
   if (request.method === "POST" && url.pathname === "/api/create-square-checkout") {
     return handleCreateSquareCheckout(request, env);
@@ -2331,9 +2562,6 @@ async function handleFetch(request, env) {
   if (request.method === "GET" && url.pathname === "/api/test-email") {
     return handleTestEmail(env);
   }
-  if (request.method === "GET" && url.pathname === "/api/test-stripe-config") {
-    return handleTestStripeConfig(env);
-  }
   if (request.method === "GET" && url.pathname === "/api/diagnose-episode-zaps") {
     return handleDiagnoseEpisodeZaps(env);
   }
@@ -2379,21 +2607,175 @@ async function confirmPayment(env, payment) {
   }
 }
 
+/**
+ * Lightning payments are only counted as paid when the Worker has checked
+ * for itself. The browser's word is never enough.
+ *
+ *  - The verify address has to be https on a normal hostname.
+ *  - For purchases it also has to belong to the same provider as Sound
+ *    Coffee's own Lightning address, so a buyer can't point the check at
+ *    their own server that always answers "paid".
+ *  - When the provider returns the payment proof (the preimage), it must
+ *    hash to the invoice's payment hash. That proof can't be faked.
+ *  - Zaps to anyone else's address have no pinned provider, so they need
+ *    that proof.
+ */
+
+function registrableDomain(host) {
+  const parts = host.toLowerCase().split(".");
+  return parts.slice(-2).join(".");
+}
+
+async function sha256Hex(hex) {
+  const bytes = new Uint8Array(hex.match(/.{1,2}/g).map((b) => parseInt(b, 16)));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function invoiceDetails(invoice) {
+  try {
+    const decoded = decodeBolt11(invoice);
+    const hash = decoded.sections.find((x) => x.name === "payment_hash")?.value;
+    const msats = decoded.sections.find((x) => x.name === "amount")?.value;
+    return { paymentHash: hash || null, sats: msats ? Math.floor(Number(msats) / 1000) : null };
+  } catch {
+    return { paymentHash: null, sats: null };
+  }
+}
+
+/** Which provider hosts a seller's Lightning address (cached for an hour). */
+async function getSellerPayDomain(env, sellerPubkey) {
+  const cacheKey = `pay-domain:${sellerPubkey}`;
+  const cached = await env.SOUND_COFFEE_KV.get(cacheKey);
+  if (cached) return cached;
+
+  let lud16 = sellerPubkey === SOUND_COFFEE_PUBKEY ? env.SOUND_COFFEE_LUD16 || null : null;
+  if (!lud16) {
+    const pool = new SimplePool();
+    try {
+      const profile = await pool.get(ZAP_SEARCH_RELAYS, { kinds: [0], authors: [sellerPubkey] }, { maxWait: 6000 });
+      if (profile) lud16 = JSON.parse(profile.content).lud16 || null;
+    } catch {
+      // fall through
+    } finally {
+      pool.close(ZAP_SEARCH_RELAYS);
+    }
+  }
+  if (!lud16 || !lud16.includes("@")) return null;
+
+  const [name, domain] = lud16.split("@");
+  const lnurlUrl = `https://${domain}/.well-known/lnurlp/${encodeURIComponent(name)}`;
+  const domains = new Set([registrableDomain(domain)]);
+  try {
+    const { res, text } = await fetchPublic(lnurlUrl, { maxBytes: 100_000 });
+    if (res.ok) {
+      const callback = JSON.parse(text).callback;
+      if (callback && isSafePublicUrl(callback)) domains.add(registrableDomain(new URL(callback).hostname));
+    }
+  } catch {
+    // keep just the address's own domain
+  }
+  const value = Array.from(domains).join(",");
+  await env.SOUND_COFFEE_KV.put(cacheKey, value, { expirationTtl: 3600 });
+  return value;
+}
+
+async function verifyLightningPayment(env, payment) {
+  if (!payment.verifyUrl) return { ok: false, reason: "no-verify-url" };
+  if (!isSafePublicUrl(payment.verifyUrl)) return { ok: false, reason: "unsafe-verify-url" };
+
+  if (payment.type === "purchase") {
+    if (payment.sellerPubkey !== SOUND_COFFEE_PUBKEY) return { ok: false, reason: "unknown-seller" };
+    const allowed = await getSellerPayDomain(env, SOUND_COFFEE_PUBKEY);
+    if (!allowed) return { ok: false, reason: "seller-provider-unknown" };
+    if (!allowed.split(",").includes(registrableDomain(new URL(payment.verifyUrl).hostname))) {
+      return { ok: false, reason: "wrong-provider" };
+    }
+  }
+
+  let data;
+  try {
+    const res = await fetch(payment.verifyUrl, { redirect: "manual", signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return { ok: false, reason: "provider-error" };
+    data = await res.json();
+  } catch {
+    return { ok: false, reason: "provider-unreachable" };
+  }
+  if (!data || data.settled !== true) return { ok: false, reason: "not-settled" };
+
+  const { paymentHash, sats } = invoiceDetails(payment.invoice);
+  const preimage = typeof data.preimage === "string" && /^[0-9a-f]{64}$/i.test(data.preimage) ? data.preimage : null;
+  if (preimage && paymentHash) {
+    if ((await sha256Hex(preimage.toLowerCase())) !== paymentHash) return { ok: false, reason: "bad-proof" };
+  } else if (payment.type !== "purchase") {
+    return { ok: false, reason: "no-proof" };
+  }
+
+  if (payment.type === "purchase") {
+    // The invoice that was paid has to cover what the order says it costs.
+    const order = await env.DB.prepare(`SELECT amount_sats FROM orders WHERE id = ?`).bind(payment.id).first();
+    if (!order) return { ok: false, reason: "no-such-order" };
+    if (sats != null && order.amount_sats != null && sats < order.amount_sats) {
+      return { ok: false, reason: "underpaid" };
+    }
+  }
+  return { ok: true };
+}
+
+/** A zero-total order (100% discount code) has nothing to verify; check the order really is zero. */
+async function isFreeOrder(env, payment) {
+  if (payment.type !== "purchase" || !String(payment.invoice).startsWith("free:")) return false;
+  const order = await env.DB.prepare(`SELECT amount_sats, amount_usd_cents FROM orders WHERE id = ?`)
+    .bind(payment.id)
+    .first();
+  return !!order && !(order.amount_sats > 0) && !(order.amount_usd_cents > 0);
+}
+
 async function handleConfirmPayment(request, env) {
   const { id } = await request.json();
-  if (!id) return jsonResponse({ error: "Missing id." }, 422);
+  if (!id || typeof id !== "string") return jsonResponse({ error: "Missing id." }, 422);
 
   const raw = await env.SOUND_COFFEE_KV.get(`pending:${id}`);
   if (!raw) return jsonResponse({ error: "No such pending payment." }, 404);
 
   const payment = JSON.parse(raw);
-  if (payment.status === "pending") {
-    // Self-reported by the buyer, same trust level as the NIP-17 receipt
-    // DM already relies on — not cryptographic proof, but the honest
-    // fallback for providers that don't support automatic verification.
+  if (payment.status !== "pending") return jsonResponse({ ok: true, status: payment.status });
+
+  if (await isFreeOrder(env, payment)) {
     await confirmPayment(env, payment);
+    return jsonResponse({ ok: true, status: "confirmed" });
   }
-  return jsonResponse({ ok: true });
+
+  if (payment.verifyUrl) {
+    const verdict = await verifyLightningPayment(env, payment);
+    if (verdict.ok) {
+      await confirmPayment(env, payment);
+      return jsonResponse({ ok: true, status: "confirmed" });
+    }
+    // Not proven (yet). The scheduled check keeps trying; nothing is marked paid.
+    return jsonResponse({ ok: true, status: "pending", reason: verdict.reason });
+  }
+
+  // No way to check automatically. Orders wait for you to confirm them from
+  // the orders dashboard; the buyer's claim only sends you a heads-up.
+  if (payment.type === "purchase" && !payment.claimNotified) {
+    payment.claimNotified = true;
+    await env.SOUND_COFFEE_KV.put(`pending:${payment.id}`, JSON.stringify(payment), {
+      expirationTtl: 60 * 60 * 24 * 30,
+    });
+    if (env.ADMIN_EMAIL) {
+      try {
+        await sendEmail(env, {
+          to: env.ADMIN_EMAIL,
+          subject: `Buyer says they paid — please check (${payment.id})`,
+          text: `A buyer says they paid order ${payment.id} by Lightning, but it can't be checked automatically. Look for the payment in your wallet, then confirm the order from the orders dashboard.`,
+        });
+      } catch {
+        // best effort
+      }
+    }
+  }
+  return jsonResponse({ ok: true, status: "pending", reason: "needs-manual-check" });
 }
 
 async function pollPendingPayments(env) {
@@ -2406,9 +2788,8 @@ async function pollPendingPayments(env) {
     if (payment.status !== "pending" || !payment.verifyUrl) continue;
 
     try {
-      const res = await fetch(payment.verifyUrl);
-      const data = await res.json();
-      if (data.settled) {
+      const verdict = await verifyLightningPayment(env, payment);
+      if (verdict.ok) {
         await confirmPayment(env, payment);
       }
     } catch {

@@ -1,3 +1,11 @@
+# Applied to every page. The site is never meant to be shown inside another
+# site's frame, and doesn't use the camera, microphone or location.
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
 # Headers for the Sound Coffee club pages (from the website packet).
 
 /m/data/*
