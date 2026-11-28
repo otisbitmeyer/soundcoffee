@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "cd tests && node test.mjs && node test-member.mjs"
+    "test": "cd tests && node test.mjs && node test-member.mjs",
+    "test:page": "node tests/e2e-member.cjs"
   },
   "dependencies": {
     "nostr-tools": "^2.26.1",

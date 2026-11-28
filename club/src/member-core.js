@@ -8,11 +8,12 @@
 //                 a request really came from the holder of that link.
 import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js'
-import { getPublicKey } from 'nostr-tools/pure'
+import { getPublicKey, verifyEvent } from 'nostr-tools/pure'
 import { wrapEvent, unwrapEvent } from 'nostr-tools/nip59'
 
 export const STATEMENT_SCHEMA = 'sound-coffee-statement/1'
 export const REQUEST_SCHEMA = 'sound-coffee-request/1'
+export const STATEMENT_KIND = 30078   // statements are published as replaceable events with d = lookupId
 export const MAX_FIELD = 2000        // longest text field the ledger will accept
 export const MAX_REQUEST_BYTES = 8000
 
@@ -160,4 +161,33 @@ export function checkRequest(r, member) {
   if (r.type === 'addon') { if (!isStr(r.itemId, 60) || !isInt(r.qty, 1, 50)) p.push('item/qty') }
   if (r.type === 'message' && !isStr(r.text, MAX_FIELD)) p.push('text')
   return p
+}
+
+// ---------- statements from relays ----------
+// From everything the relays returned, keep only events that are really the
+// orders key's statement for this member, then take the newest.
+export function pickStatementEvent(events, ordersPubkey, lookupId) {
+  let best = null
+  for (const ev of events || []) {
+    try {
+      if (!ev || ev.kind !== STATEMENT_KIND || ev.pubkey !== ordersPubkey) continue
+      if (!Array.isArray(ev.tags) || !ev.tags.some(t => t[0] === 'd' && t[1] === lookupId)) continue
+      if (!verifyEvent(ev)) continue
+    } catch (_) { continue }
+    if (!best || ev.created_at > best.created_at) best = ev
+  }
+  return best
+}
+
+// ---------- Lightning ----------
+// The amount written into a BOLT11 invoice, in millisats (BigInt), or null if
+// it has none or isn't a mainnet invoice. Amount is digits plus an optional
+// multiplier: m = milli, u = micro, n = nano, p = pico bitcoin.
+export function invoiceMsats(pr) {
+  const m = /^lnbc(\d+)([munp])?1[02-9ac-hj-np-z]+$/i.exec(String(pr || '').trim())
+  if (!m) return null
+  const digits = BigInt(m[1])
+  const per = { undefined: 1n, m: 1000n, u: 1000000n, n: 1000000000n, p: 1000000000000n }[(m[2] || '').toLowerCase() || 'undefined']
+  const msats = digits * 100000000000n
+  return msats % per === 0n ? msats / per : null
 }

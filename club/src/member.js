@@ -1,7 +1,7 @@
 import qrcode from 'qrcode-generator'
-import { publish } from './core.js'
+import { publish, query } from './core.js'
 import { SAMPLE_STATEMENT } from './sample-statement.js'
-import { isMemberSecret, memberKeys, openStatement, wrapRequest, isLate, fmtMoney, priceIn, describeRequest, newRequestId } from './member-core.js'
+import { isMemberSecret, memberKeys, openStatement, wrapRequest, isLate, fmtMoney, priceIn, describeRequest, newRequestId, pickStatementEvent, STATEMENT_KIND, invoiceMsats } from './member-core.js'
 
 const CFG = window.MEMBER_CONFIG
 const $ = s => document.querySelector(s)
@@ -31,6 +31,29 @@ function problem(msg) {
     h('p', { class: 'muted small' }, 'If this keeps happening, write to ', h('a', { href: 'mailto:' + CFG.contactEmail }, CFG.contactEmail), '.'))
 }
 
+// The ledger publishes each member's sealed statement to the relays as a
+// replaceable event from the orders key, with d = the member's lookup id.
+// Anything not signed by that key is ignored, however new it is.
+async function fetchStatement(lookupId) {
+  const pk = CFG.ordersPubkey
+  if (!/^[0-9a-f]{64}$/.test(pk || '') || !(CFG.relays || []).length) return { status: 'unconfigured' }
+  const { events, reached } = await query({ kinds: [STATEMENT_KIND], authors: [pk], '#d': [lookupId], limit: 1 }, CFG.relays)
+  const ev = pickStatementEvent(events, pk, lookupId)
+  if (ev) {
+    let box
+    try { box = JSON.parse(ev.content) } catch (_) { return { status: 'missing' } }
+    if (box && box.gone === true) return { status: 'gone' }
+    return { status: 'ok', box }
+  }
+  if (CFG.fileFallback === true) {
+    try {
+      const res = await fetch(CFG.dataPath + lookupId + '.json', { cache: 'no-store' })
+      if (res.ok) return { status: 'ok', box: await res.json() }
+    } catch (_) {}
+  }
+  return { status: reached ? 'missing' : 'unreachable' }
+}
+
 async function load() {
   const frag = decodeURIComponent(location.hash.slice(1))
   if (frag === 'demo') {
@@ -43,15 +66,12 @@ async function load() {
   SECRET = frag
   const { lookupId } = memberKeys(SECRET)
   storeKey = 'sc-sent-' + lookupId
-  let file
-  try {
-    const res = await fetch(CFG.dataPath + lookupId + '.json', { cache: 'no-store' })
-    if (res.status === 404) return problem('I couldn’t find your page yet. It may not be published. Try again after my next update.')
-    if (!res.ok) throw new Error('HTTP ' + res.status)
-    file = await res.json()
-  } catch (e) {
-    return problem('I couldn’t reach your page just now. Please check your connection and try again.')
-  }
+  const got = await fetchStatement(lookupId)
+  if (got.status === 'unconfigured') return problem('This page isn’t set up yet. Please check back soon.')
+  if (got.status === 'unreachable') return problem('I couldn’t reach your page just now. Please check your connection and try again.')
+  if (got.status === 'missing') return problem('I couldn’t find your page yet. It may not be published. Try again after my next update.')
+  if (got.status === 'gone') return problem('I couldn’t find your page. If you were sent a new link, please use that one.')
+  const file = got.box
   try { S = await openStatement(SECRET, file) }
   catch (e) { return problem('This link doesn’t open your page. It may have been replaced with a new one.') }
   render()
@@ -84,7 +104,7 @@ async function send(req, statusEl, btn) {
     } else {
       const w = wrapRequest(SECRET, S, full)
       request = w.request
-      const results = await publish(w.wrap, S.relays)
+      const results = await publish(w.wrap, (S.relays && S.relays.length) ? S.relays : CFG.relays)
       if (!results.some(r => r.ok)) throw new Error('no relay accepted it')
     }
     remember(request)
@@ -138,31 +158,109 @@ function copyBtn(text) {
 }
 const safeUrl = u => /^https:\/\//i.test(u || '') ? u : null
 
+// ---------- Lightning: a fresh invoice for the exact amount, from my Lightning address ----------
+const LN_ADDRESS = /^[a-z0-9._+-]+@([a-z0-9-]+(\.[a-z0-9-]+)+)$/i
+const LN_GOOD_FOR_MS = 10 * 60 * 1000
+const getJson = async url => {
+  const res = await fetch(url, { cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(8000) })
+  if (!res.ok) throw new Error('HTTP ' + res.status)
+  return res.json()
+}
+
+// Resolves to a BOLT11 invoice for exactly `sats`, or throws an Error with words fit to show.
+async function getLightningInvoice(address, sats, comment) {
+  const m = LN_ADDRESS.exec(address || '')
+  if (!m || !Number.isInteger(sats) || sats < 1) throw new Error('bad-request')
+  const domain = m[1].toLowerCase()
+  if (!(CFG.lightningHosts || []).map(x => String(x).toLowerCase()).includes(domain)) throw new Error('not-allowed')
+  const name = address.slice(0, address.indexOf('@'))
+  const info = await getJson(`https://${domain}/.well-known/lnurlp/${encodeURIComponent(name)}`)
+  const msats = sats * 1000
+  if (info.tag !== 'payRequest' || !/^https:\/\//i.test(info.callback || '')) throw new Error('not-lnurl')
+  if (!(msats >= info.minSendable && msats <= info.maxSendable)) throw new Error('amount-out-of-range')
+  const url = new URL(info.callback)
+  url.searchParams.set('amount', String(msats))
+  if (comment && Number(info.commentAllowed) >= comment.length) url.searchParams.set('comment', comment)
+  const inv = await getJson(url.toString())
+  if (inv.status === 'ERROR') throw new Error('provider: ' + (inv.reason || 'error'))
+  if (invoiceMsats(inv.pr) !== BigInt(msats)) throw new Error('wrong-amount')
+  return inv.pr
+}
+
+function lightningPay(b, ln) {
+  const box = h('div', { class: 'lnpay' })
+  const note = h('p', { class: 'small', style: 'margin-top:8px' }, `Or send ${fmtMoney(b.amount)} to my Lightning address `, h('strong', null, ln.address), ` with ${b.id} in the note.`)
+  let timer, onVisible
+  const stop = () => { clearTimeout(timer); onVisible && document.removeEventListener('visibilitychange', onVisible); onVisible = null }
+  const start = (msg, cls) => {
+    stop()
+    box.replaceChildren(h('div', { class: 'actions' }, h('button', { type: 'button', onclick: go }, 'Pay with Lightning')),
+      msg ? h('p', { class: 'small ' + (cls || 'muted') }, msg) : null, cls === 'err' ? note : null)
+  }
+  const showInvoice = pr => {
+    const until = Date.now() + LN_GOOD_FOR_MS
+    const expire = () => { if (Date.now() >= until) start('That invoice has expired. Tap to get a new one.', 'muted') }
+    timer = setTimeout(expire, LN_GOOD_FOR_MS)
+    onVisible = () => { if (document.visibilityState === 'visible') expire() }
+    document.addEventListener('visibilitychange', onVisible)
+    box.replaceChildren(h('p', { class: 'small', style: 'margin-top:8px' }, `Pay ${ln.sats.toLocaleString('en-US')} sats with Lightning:`),
+      qr(('lightning:' + pr).toUpperCase()), h('div', { class: 'code' }, pr),
+      h('div', { class: 'actions' }, h('a', { class: 'btn', href: 'lightning:' + pr }, 'Open wallet'), copyBtn(pr)),
+      h('p', { class: 'small muted' }, 'This invoice is good for about 10 minutes. After that, tap again for a new one.'))
+  }
+  async function go() {
+    stop()
+    box.replaceChildren(h('p', { class: 'small muted', style: 'margin-top:8px' }, 'Getting an invoice…'))
+    if (DEMO) { await new Promise(r => setTimeout(r, 400)); return showInvoice('lnbc' + ln.sats + 'n1demoinvoicenotrealdonotpay'.toLowerCase()) }
+    try { showInvoice(await getLightningInvoice(ln.address, ln.sats, ln.comment)) }
+    catch (e) { console.warn(e); start('I couldn’t get an invoice just now.', 'err') }
+  }
+  start()
+  return box
+}
+
+function amountText(x) {
+  if (x == null) return ''
+  if (typeof x === 'object') return x.amount ? fmtMoney(x.amount) : x.amt != null ? fmtMoney(x) : ''
+  return String(x)
+}
+const safeBitcoinUri = u => /^bitcoin:[a-z0-9]/i.test(u || '') && u.length < 600 ? u : null
+
 function billsSection() {
   const due = (S.bills || []).filter(b => b.status === 'due')
   if (!due.length) return fill('#s-bills', h('h2', null, 'Bills'), h('p', null, 'You’re all paid up. Thank you!'))
   const kids = [h('h2', null, 'Bills')]
+  if (S.credit && S.credit.amt > 0) kids.push(h('p', { class: 'small muted' }, `You have ${fmtMoney(S.credit)} in credit from an earlier payment. It’s applied to your next bill.`))
   due.forEach(b => {
     const pay = b.pay || {}, opts = []
+    const part = b.paid && b.paid.amt > 0
+    const detail = []
+    if (Array.isArray(b.lines)) b.lines.forEach(l => detail.push(row(l.label, amountText(l), 'small muted')))
+    if (b.shipping != null && b.shipping !== '') detail.push(row(b.shipping && b.shipping.label ? b.shipping.label : 'Shipping', amountText(b.shipping), 'small muted'))
+    if (b.creditUsed && b.creditUsed.amt > 0) detail.push(row('Credit applied', '− ' + fmtMoney(b.creditUsed), 'small muted'))
+    if (part && b.total) { detail.push(row('Bill total', fmtMoney(b.total), 'small muted')); detail.push(row('Received so far', fmtMoney(b.paid), 'small muted')) }
+    if (b.converted) detail.push(h('p', { class: 'small muted' }, b.converted))
+
     if (safeUrl(pay.squareUrl)) opts.push(h('div', { class: 'actions' }, h('a', { class: 'btn', href: safeUrl(pay.squareUrl), target: '_blank', rel: 'noopener' }, 'Pay by card')))
     if (pay.lightning && pay.lightning.invoice) {
       const inv = pay.lightning.invoice
       opts.push(h('div', null, h('p', { class: 'small', style: 'margin-top:8px' }, 'Pay with Lightning:'), qr(inv.toUpperCase()),
         h('div', { class: 'code' }, inv), h('div', { class: 'actions' }, h('a', { class: 'btn', href: 'lightning:' + inv }, 'Open wallet'), copyBtn(inv))))
-    }
-    if (pay.lightning && pay.lightning.address) {
-      opts.push(h('p', { class: 'small', style: 'margin-top:8px' }, `Or send ${fmtMoney(b.amount)} to my Lightning address `, h('strong', null, pay.lightning.address),
+    } else if (pay.lightning && pay.lightning.address && Number.isInteger(pay.lightning.sats) && pay.lightning.sats > 0) {
+      opts.push(lightningPay(b, pay.lightning))
+    } else if (pay.lightning && pay.lightning.address) {
+      opts.push(h('p', { class: 'small', style: 'margin-top:8px' }, `Send ${fmtMoney(b.amount)} to my Lightning address `, h('strong', null, pay.lightning.address),
         ` with ${b.id} in the note.`))
     }
     if (pay.onchain && pay.onchain.address) {
       const btc = (pay.onchain.sats / 1e8).toFixed(8).replace(/0+$/, '').replace(/\.$/, '')
-      const uri = `bitcoin:${pay.onchain.address}?amount=${btc}`
+      const uri = safeBitcoinUri(pay.onchain.uri) || `bitcoin:${pay.onchain.address}?amount=${btc}`
       opts.push(h('div', null, h('p', { class: 'small', style: 'margin-top:8px' }, `Pay on-chain: ${pay.onchain.sats.toLocaleString('en-US')} sats to`), qr(uri),
         h('div', { class: 'code' }, pay.onchain.address), h('div', { class: 'actions' }, h('a', { class: 'btn', href: uri }, 'Open wallet'), copyBtn(pay.onchain.address))))
     }
     if (pay.cash) opts.push(h('p', { class: 'small muted' }, 'Cash is fine at pickup or delivery.'))
     if (!opts.length) opts.push(h('p', { class: 'small muted' }, 'I’ll send payment details shortly.'))
-    kids.push(h('div', { class: 'item' }, row(b.label, fmtMoney(b.amount)), opts))
+    kids.push(h('div', { class: 'item' }, row(part ? b.label + ' (left to pay)' : b.label, fmtMoney(b.amount)), detail, opts))
   })
   fill('#s-bills', kids)
 }

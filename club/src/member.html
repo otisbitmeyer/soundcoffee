@@ -6,13 +6,34 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <title>Your Sound Coffee Club page</title>
+<!--CSP-->
 <script>
 /* ======================= EDIT ME =======================
-   dataPath: folder on your site holding the sealed
-             statement files the ledger uploads.
+   ordersPubkey: hex public key of your orders key. In the ledger:
+                 Club → Inbox → Keys and relays.
+   relays:       the same relays as join.html and the ledger.
+                 Statements are read from these.
+   lightningHosts: website names the Lightning Pay button may contact:
+                 the domain of your Lightning address, and the
+                 provider's callback host if it's different.
+   fileFallback: true also tries sealed files in dataPath when no
+                 relay has the statement. Normally leave false.
    contactEmail: shown if someone's link doesn't work.
+
+   The page's security policy is built from this list when the
+   page is built (npm run build, inside club/), so after changing
+   relays or lightningHosts, rebuild.
    ======================================================= */
 window.MEMBER_CONFIG = {
+  ordersPubkey: '',
+  relays: [
+    'wss://relay.damus.io',
+    'wss://nos.lol',
+    'wss://relay.primal.net',
+    'wss://relay.0xchat.com'
+  ],
+  lightningHosts: [],
+  fileFallback: false,
   dataPath: 'm/data/',
   contactEmail: 'hello@REPLACE-WITH-YOUR-DOMAIN'
 }

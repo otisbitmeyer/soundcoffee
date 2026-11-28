@@ -41,9 +41,18 @@ export const SAMPLE_STATEMENT = {
     { id: 'bag-extra', kind: 'product', name: 'Extra bag of this month’s coffee', size: '1 lb',
       desc: 'Added at the regular price.', price: { usdCents: 2000, sats: 20000 }, stock: null }
   ],
+  credit: { amt: 0, cur: 'USD' },         // any earlier overpayment still held
   bills: [
     { id: 'B-2026-11', label: 'November roast', amount: { amt: 3800, cur: 'USD' }, status: 'due',
+      total: { amt: 3800, cur: 'USD' }, paid: { amt: 0, cur: 'USD' },
+      lines: [{ label: '2 bags, monthly club', amount: { amt: 3800, cur: 'USD' } }],
       pay: { squareUrl: 'https://square.link/u/EXAMPLE' } },
+    { id: 'B-2026-12', label: 'December roast (Lightning)', amount: { amt: 38000, cur: 'SAT' }, status: 'due',
+      total: { amt: 40000, cur: 'SAT' }, paid: { amt: 2000, cur: 'SAT' },
+      lines: [{ label: '2 bags, monthly club', amount: { amt: 40000, cur: 'SAT' } }],
+      shipping: { label: 'Shipping', amount: { amt: 0, cur: 'SAT' } },
+      converted: 'Shipping was priced at $6 and converted once, at $1 = 1,000 sats, when this bill was made.',
+      pay: { lightning: { address: 'you@example.com', sats: 38000, comment: 'B-2026-12' } } },
     { id: 'B-2026-10', label: 'October roast', amount: { amt: 3800, cur: 'USD' }, status: 'paid' }
   ],
   history: [

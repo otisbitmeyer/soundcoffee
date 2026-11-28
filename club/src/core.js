@@ -185,3 +185,31 @@ export function publish(event, relays, timeoutMs = 8000, WS = globalThis.WebSock
     } catch (err) { clearTimeout(t); finish(false, String(err)) }
   })))
 }
+
+// Ask several relays for events over plain WebSockets. Resolves once every
+// relay has said it's done (EOSE) or the time is up, whichever comes first.
+// `reached` counts relays we managed to connect to, so callers can tell
+// "nobody answered" apart from "they answered, and it isn't there".
+export function query(filter, relays, timeoutMs = 6000, WS = globalThis.WebSocket) {
+  const events = []
+  let reached = 0
+  return Promise.all(relays.map(url => new Promise(resolve => {
+    let done = false, ws
+    const subId = 's' + Math.random().toString(36).slice(2, 8)
+    const finish = () => { if (done) return; done = true; clearTimeout(t); try { ws && ws.close() } catch (_) {} resolve() }
+    const t = setTimeout(finish, timeoutMs)
+    try {
+      ws = new WS(url)
+      ws.onopen = () => { reached++; ws.send(JSON.stringify(['REQ', subId, filter])) }
+      ws.onmessage = e => {
+        try {
+          const m = JSON.parse(e.data)
+          if (m[0] === 'EVENT' && m[1] === subId && m[2]) events.push(m[2])
+          else if ((m[0] === 'EOSE' || m[0] === 'CLOSED') && m[1] === subId) finish()
+        } catch (_) {}
+      }
+      ws.onerror = finish
+      ws.onclose = finish
+    } catch (_) { finish() }
+  }))).then(() => ({ events, reached }))
+}
